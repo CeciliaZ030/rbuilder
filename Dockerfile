@@ -40,18 +40,19 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # Builder container (running "cargo chef cook" and "cargo build --release")
 #
 FROM base as builder
-WORKDIR /app
 
-COPY --from=planner /app/recipe.json recipe.json
-
-RUN --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
-    cargo chef cook --release --recipe-path recipe.json
-
+COPY --from=planner /app/recipe.json /rbuilder/recipe.json
 COPY ./rbuilder/Cargo.lock ./rbuilder/Cargo.lock
 COPY ./rbuilder/Cargo.toml ./rbuilder/Cargo.toml
 COPY ./rbuilder/.git ./rbuilder/.git
 COPY ./rbuilder/crates/ ./rbuilder/crates/
 COPY ./revm ./revm
+COPY ./revm-inspectors ./revm-inspectors
+
+WORKDIR /app/rbuilder
+RUN --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
+    cargo chef cook --release --recipe-path recipe.json
+
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
@@ -65,11 +66,6 @@ FROM gcr.io/distroless/cc-debian12
 
 WORKDIR /app
 
-# RUN apk add libssl3 ca-certificates
-# RUN apt-get update \
-#     && apt-get install -y libssl3 ca-certificates \
-#     && rm -rf /var/lib/apt/lists/*
-
-COPY --from=builder /app/target/release/rbuilder /app/rbuilder
+COPY --from=builder /app/rbuilder/target/release/rbuilder /app/rbuilder
 
 ENTRYPOINT ["/app/rbuilder"]
