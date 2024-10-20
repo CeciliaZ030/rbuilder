@@ -26,10 +26,10 @@ ENV SCCACHE_DIR=/sccache
 FROM base AS planner
 WORKDIR /app
 
-COPY ./Cargo.lock ./Cargo.lock
-COPY ./Cargo.toml ./Cargo.toml
-COPY ./.git ./.git
-COPY ./crates/ ./crates/
+COPY ./rbuilder/Cargo.lock ./Cargo.lock
+COPY ./rbuilder/Cargo.toml ./Cargo.toml
+COPY ./rbuilder/.git ./.git
+COPY ./rbuilder/crates/ ./crates/
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
@@ -47,10 +47,11 @@ COPY --from=planner /app/recipe.json recipe.json
 RUN --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
     cargo chef cook --release --recipe-path recipe.json
 
-COPY ./Cargo.lock ./Cargo.lock
-COPY ./Cargo.toml ./Cargo.toml
-COPY ./.git ./.git
-COPY ./crates/ ./crates/
+COPY ./rbuilder/Cargo.lock ./rbuilder/Cargo.lock
+COPY ./rbuilder/Cargo.toml ./rbuilder/Cargo.toml
+COPY ./rbuilder/.git ./rbuilder/.git
+COPY ./rbuilder/crates/ ./rbuilder/crates/
+COPY ./revm ./revm
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
