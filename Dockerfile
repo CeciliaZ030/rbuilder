@@ -28,7 +28,6 @@ WORKDIR /app
 
 COPY ./rbuilder/Cargo.lock ./Cargo.lock
 COPY ./rbuilder/Cargo.toml ./Cargo.toml
-COPY ./rbuilder/.git ./.git
 COPY ./rbuilder/crates/ ./crates/
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
@@ -41,15 +40,16 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 #
 FROM base as builder
 
-COPY --from=planner /app/recipe.json /rbuilder/recipe.json
-COPY ./rbuilder/Cargo.lock ./rbuilder/Cargo.lock
-COPY ./rbuilder/Cargo.toml ./rbuilder/Cargo.toml
-COPY ./rbuilder/.git ./rbuilder/.git
-COPY ./rbuilder/crates/ ./rbuilder/crates/
-COPY ./revm ./revm
-COPY ./revm-inspectors ./revm-inspectors
-
+COPY --from=planner /app/recipe.json /app/rbuilder/recipe.json
+COPY ./rbuilder/Cargo.lock /app/rbuilder/Cargo.lock
+COPY ./rbuilder/Cargo.toml /app/rbuilder/Cargo.toml
+COPY ./rbuilder/crates/ /app/rbuilder/crates/
+COPY ./reth /app/reth
+COPY ./revm /app/revm
+COPY ./revm-inspectors /app/revm-inspectors
+RUN ls
 WORKDIR /app/rbuilder
+RUN pwd && ls
 RUN --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
     cargo chef cook --release --recipe-path recipe.json
 
@@ -62,7 +62,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 #
 # Runtime container
 #
-FROM gcr.io/distroless/cc-debian12
+FROM ubuntu:22.04 AS runtime
 
 WORKDIR /app
 
