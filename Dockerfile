@@ -66,6 +66,7 @@ FROM ubuntu:22.04 AS runtime
 
 WORKDIR /app
 
-COPY --from=builder /app/rbuilder/target/release/rbuilder /app/rbuilder
+COPY --from=builder /app/rbuilder/target/release/rbuilder /usr/local/bin
 
-ENTRYPOINT ["/app/rbuilder"]
+# ENTRYPOINT ["/app/rbuilder"]
+ENTRYPOINT ["/bin/sh", "-c"]
