@@ -45,7 +45,7 @@ pub struct GwynethNode<DB> {
 
 #[derive(Debug)]
 pub struct Layer2Info<DB> {
-    pub ipc_providers: Arc<Mutex<HashMap<u64, (RootProvider<PubSubFrontend>, String)>>>,
+    pub ipc_providers: Arc<Mutex<HashMap<u64, (RootProvider<PubSubFrontend>, PathBuf)>>>,
     pub data_dirs: HashMap<u64, PathBuf>,
     pub nodes: HashMap<u64, GwynethNode<DB>>,
 }
@@ -59,48 +59,35 @@ impl<DB> PartialEq for Layer2Info<DB> {
 impl<DB> Eq for Layer2Info<DB> {}
 
 impl<DB: Clone> Layer2Info<DB> {
-    pub async fn new(chain_ids: Vec<u64>, provider_factories: HashMap<u64, ProviderFactoryReopener<DB>>) -> Result<Self> {
+    pub async fn new(provider_factories: Vec<ProviderFactoryReopener<DB>>, data_dirs: &Vec<PathBuf>, ipc_paths: &Vec<PathBuf>, server_ports: &Vec<u64>) -> Result<Self> {
         let mut providers = HashMap::default();
         let mut data_dirs_map = HashMap::default();
-
-        let datadir_base = "/data/reth/gwyneth";
-        let ipc_base: &str = "/tmp/reth.ipc";
-
-        let chain = chain_value_parser("/network-configs/genesis.json").expect("failed to load gwyneth chain spec");
-
         let mut nodes = HashMap::default();
-        for chain_id in chain_ids {
-            let ipc_path = format!("{}-{}", ipc_base, chain_id).to_owned();
-            let data_dir = format!("{}-{}", datadir_base, chain_id).to_owned();
-
-            let ipc = IpcConnect::new(ipc_path.clone());
+        for (((reopener, data_dir), ipc_path), port) in provider_factories
+            .iter()
+            .zip(data_dirs.iter())
+            .zip(ipc_paths.iter())
+            .zip(server_ports.iter()) 
+        {
+            let ipc: IpcConnect<_> = IpcConnect::new(ipc_path.clone());
             let provider = ProviderBuilder::new().on_ipc(ipc).await?;
-            //let chain_id = U256::from(provider.get_chain_id().await?);
-            providers.insert(chain_id, (provider, ipc_path));
-            data_dirs_map.insert(chain_id, PathBuf::from(data_dir));
-
-            // let provider_factory = create_provider_factory(
-            //     Some(Path::new(&format!("{}-{}", datadir_base, chain_id).to_owned())),
-            //     Some(Path::new(&format!("{}-{}/db", datadir_base, chain_id).to_owned())),
-            //     Some(Path::new(&format!("{}-{}/static_files", datadir_base, chain_id).to_owned())),
-            //     chain.clone(),
-            // )?;
-
+            let chain_id = provider.get_chain_id().await?;
+            providers.insert(chain_id, (provider, ipc_path.clone()));
+            data_dirs_map.insert(chain_id, data_dir.clone());
             nodes.insert(chain_id, GwynethNode {
-                provider_factory: provider_factories[&chain_id].clone(),
-                order_input_config: OrderInputConfig::new(
-                    true,
-                    false,
-                    Path::new(&format!("{}-{}", ipc_base, chain_id).to_owned()).into(),
-                    9646 + ((chain_id + 1) - 167010) as u16,
-                    Ipv4Addr::new(0, 0, 0, 0),
-                    4096,
-                    Duration::from_millis(50),
-                    10_000,
-                ),
+                    provider_factory: reopener.clone(),
+                    order_input_config: OrderInputConfig::new(
+                        true,
+                        false,
+                        ipc_path.clone(),
+                        *port as u16,                    
+                        Ipv4Addr::new(0, 0, 0, 0),
+                        4096,
+                        Duration::from_millis(50),
+                        10_000,
+                    ),
             });
         }
-
         Ok(Self {
             ipc_providers: Arc::new(Mutex::new(providers)),
             data_dirs: data_dirs_map,
@@ -115,7 +102,7 @@ impl<DB: Clone> Layer2Info<DB> {
                 Ok(_) => true,
                 Err(_) => {
                     warn!("Connection lost for chain_id: {}. Attempting to reconnect...", chain_id);
-                    match self.reconnect( provider, ipc_path).await {
+                    match self.reconnect( provider, ipc_path.clone()).await {
                         Ok(_) => true,
                         Err(e) => {
                             warn!("Failed to reconnect for chain_id: {}. Error: {:?}", chain_id, e);
@@ -158,12 +145,8 @@ impl<DB: Clone> Layer2Info<DB> {
         }
     }
 
-    pub fn get_data_dir(&self, chain_id: &u64) -> Option<&PathBuf> {
-        self.data_dirs.get(chain_id)
-    }
-
-    async fn reconnect(&self, provider: &mut RootProvider<PubSubFrontend>, ipc_path: &str) -> Result<()> {
-        let ipc = IpcConnect::new(ipc_path.to_string());
+    async fn reconnect(&self, provider: &mut RootProvider<PubSubFrontend>, ipc_path: PathBuf) -> Result<()> {
+        let ipc = IpcConnect::new(ipc_path);
         *provider = ProviderBuilder::new().on_ipc(ipc).await?;
         Ok(())
     }

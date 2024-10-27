@@ -1,72 +1,27 @@
-#
-# Base container (with sccache and cargo-chef)
-#
-# - https://github.com/mozilla/sccache
-# - https://github.com/LukeMathWalker/cargo-chef
-#
-# Based on https://depot.dev/blog/rust-dockerfile-best-practices
-#
-FROM rust:1.81 as base
+FROM lukemathwalker/cargo-chef:latest-rust-1 AS builder
+RUN apt-get update && apt-get -y upgrade && apt-get install -y libclang-dev
 
-ARG FEATURES
-
-RUN cargo install sccache --version ^0.8
-RUN cargo install cargo-chef --version ^0.1
-
-RUN apt-get update \
-    && apt-get install -y clang libclang-dev
-
-ENV CARGO_HOME=/usr/local/cargo
-ENV RUSTC_WRAPPER=sccache
-ENV SCCACHE_DIR=/sccache
-
-#
-# Planner container (running "cargo chef prepare")
-#
-FROM base AS planner
-WORKDIR /app
-
-COPY ./rbuilder/Cargo.lock ./Cargo.lock
-COPY ./rbuilder/Cargo.toml ./Cargo.toml
-COPY ./rbuilder/crates/ ./crates/
-
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
-    cargo chef prepare --recipe-path recipe.json
-
-#
-# Builder container (running "cargo chef cook" and "cargo build --release")
-#
-FROM base as builder
-
-COPY --from=planner /app/recipe.json /app/rbuilder/recipe.json
-COPY ./rbuilder/Cargo.lock /app/rbuilder/Cargo.lock
-COPY ./rbuilder/Cargo.toml /app/rbuilder/Cargo.toml
-COPY ./rbuilder/crates/ /app/rbuilder/crates/
-COPY ./reth /app/reth
-COPY ./revm /app/revm
-COPY ./revm-inspectors /app/revm-inspectors
-RUN ls
-WORKDIR /app/rbuilder
+COPY ./rbuilder/Cargo.lock /rbuilder/Cargo.lock
+COPY ./rbuilder/Cargo.toml /rbuilder/Cargo.toml
+COPY ./rbuilder/crates /rbuilder/crates
+COPY ./reth/Cargo.lock ./reth/Cargo.lock
+COPY ./reth/Cargo.toml ./reth/Cargo.toml
+COPY ./reth/crates ./reth/crates
+COPY ./reth/bin ./reth/bin
+COPY ./reth/examples ./reth/examples
+COPY ./reth/testing ./reth/testing
+COPY ./revm ./revm
+COPY ./revm-inspectors ./revm-inspectors
 RUN pwd && ls
-RUN --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
-    cargo chef cook --release --recipe-path recipe.json
 
+WORKDIR /rbuilder
+RUN cargo build --release
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
-    cargo build --release --features="$FEATURES"
-
-#
-# Runtime container
-#
 FROM ubuntu:22.04 AS runtime
-
+COPY --from=builder /rbuilder/target/release/rbuilder /usr/local/bin
+COPY ./reth/crates/ethereum/node/tests/assets /network-configs
+RUN cat /network-configs/genesis.json
 WORKDIR /app
+# RUN rbuilder
 
-COPY --from=builder /app/rbuilder/target/release/rbuilder /usr/local/bin
-
-# ENTRYPOINT ["/app/rbuilder"]
-ENTRYPOINT ["/bin/sh", "-c"]
+ENTRYPOINT ["/usr/local/bin/rbuilder"]

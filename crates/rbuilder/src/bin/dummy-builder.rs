@@ -21,7 +21,7 @@ use rbuilder::{
         base_config::{
             DEFAULT_EL_NODE_IPC_PATH, DEFAULT_INCOMING_BUNDLES_PORT, DEFAULT_IP,
             DEFAULT_RETH_DB_PATH,
-        }, config::create_provider_factory, layer2_info::Layer2Info, order_input::{
+        }, config::create_provider_factory, layer2_info::{self, Layer2Info}, order_input::{
             OrderInputConfig, DEFAULT_INPUT_CHANNEL_BUFFER_SIZE, DEFAULT_RESULTS_CHANNEL_TIMEOUT,
             DEFAULT_SERVE_MAX_CONNECTIONS,
         }, payload_events::{MevBoostSlotData, MevBoostSlotDataGenerator}, simulation::SimulatedOrderCommand, LiveBuilder
@@ -66,6 +66,8 @@ async fn main() -> eyre::Result<()> {
         cancel.clone(),
     );
 
+    let layer2_info = Layer2Info::new(vec![], &vec![], &vec![], &vec![]).await?;
+
     let builder = LiveBuilder::<Arc<DatabaseEnv>, MevBoostSlotDataGenerator> {
         watchdog_timeout: Duration::from_secs(10000),
         error_storage_path: None,
@@ -95,7 +97,7 @@ async fn main() -> eyre::Result<()> {
         extra_rpc: RpcModule::new(()),
         sink_factory: Box::new(TraceBlockSinkFactory {}),
         builders: vec![Arc::new(DummyBuildingAlgorithm::new(10))],
-        layer2_info: Layer2Info::new(vec![], HashMap::default()).await?,
+        layer2_info,
     };
 
     let ctrlc = tokio::spawn(async move {

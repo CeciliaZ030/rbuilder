@@ -105,13 +105,11 @@ pub struct BaseConfig {
     pub backtest_protect_bundle_signers: Vec<Address>,
 
     // Layer2 related
-    #[serde_as(as = "Vec<EnvOrValue<String>>")]
-    pub l2_el_node_ipc_paths: Vec<EnvOrValue<String>>,
-
-    #[serde_as(as = "Vec<EnvOrValue<String>>")]
-    pub l2_reth_datadirs: Vec<EnvOrValue<String>>,
-
+    // #[serde_as(as = "Vec<PathBuf>")]
+    pub l2_ipc_paths: Vec<PathBuf>,
+    pub l2_reth_datadirs: Vec<PathBuf>,
     pub gwyneth_chain_ids: Vec<u64>,
+    pub l2_server_ports: Vec<u64>,
 }
 
 lazy_static! {
@@ -180,18 +178,18 @@ impl BaseConfig {
         cancellation_token: tokio_util::sync::CancellationToken,
         sink_factory: Box<dyn UnfinishedBlockBuildingSinkFactory>,
         slot_source: SlotSourceType,
-        gwyneth_chain_ids: Vec<u64>,
     ) -> eyre::Result<super::LiveBuilder<Arc<DatabaseEnv>, SlotSourceType>>
     where
         SlotSourceType: SlotSource,
     {
         let provider_factory = self.provider_factory()?;
+        let l2_provider_factory = self.gwyneth_provider_factories()?;
         self.create_builder_with_provider_factory(
             cancellation_token,
             sink_factory,
             slot_source,
-            gwyneth_chain_ids,
             provider_factory,
+            l2_provider_factory
         )
         .await
     }
@@ -202,12 +200,18 @@ impl BaseConfig {
         cancellation_token: tokio_util::sync::CancellationToken,
         sink_factory: Box<dyn UnfinishedBlockBuildingSinkFactory>,
         slot_source: SlotSourceType,
-        gwyneth_chain_ids: Vec<u64>,
         provider_factory: ProviderFactoryReopener<Arc<DatabaseEnv>>,
+        l2_provider_factory: Vec<ProviderFactoryReopener<Arc<DatabaseEnv>>>,
     ) -> eyre::Result<super::LiveBuilder<Arc<DatabaseEnv>, SlotSourceType>>
     where
         SlotSourceType: SlotSource,
     {
+        let layer2_info = Layer2Info::new(
+            l2_provider_factory,
+            &self.l2_reth_datadirs,
+            &self.l2_ipc_paths,
+            &self.l2_server_ports,
+        ).await?;
         Ok(LiveBuilder::<Arc<DatabaseEnv>, SlotSourceType> {
             watchdog_timeout: self.watchdog_timeout(),
             error_storage_path: self.error_storage_path.clone(),
@@ -226,7 +230,7 @@ impl BaseConfig {
             extra_rpc: RpcModule::new(()),
             sink_factory,
             builders: Vec::new(),
-            layer2_info: Layer2Info::<Arc<DatabaseEnv>>::new(gwyneth_chain_ids.clone(), create_gwyneth_providers(gwyneth_chain_ids)?).await?,
+            layer2_info,
         })
     }
 
@@ -246,6 +250,14 @@ impl BaseConfig {
         chain_value_parser(&self.chain)
     }
 
+    pub fn l2_chain_specs(&self) -> eyre::Result<Vec<Arc<ChainSpec>>> {
+        self.gwyneth_chain_ids
+            .iter()
+            // TODO(Cecilia): Can potentially be path to chain specs
+            .map(|_| chain_value_parser("/network-configs/genesis.json"))
+            .collect()
+    }
+
     pub fn sbundle_mergeabe_signers(&self) -> Vec<Address> {
         if self.sbundle_mergeabe_signers.is_none() {
             warn!("Defaulting sbundle_mergeabe_signers to empty. We may not comply with order flow rules.");
@@ -263,6 +275,29 @@ impl BaseConfig {
             self.chain_spec()?,
             false,
         )
+    }
+
+    pub fn gwyneth_provider_factories(&self) -> eyre::Result<Vec<ProviderFactoryReopener<Arc<DatabaseEnv>>>> {
+        self.l2_reth_datadirs
+            .iter()
+            .zip(self.l2_chain_specs()?.iter())
+            .map(|(path, chain_spec)| {
+                let (datadir, static_files) = (path.join("db"), path.join("static_files"));
+                
+                let db = open_reth_db(&datadir)?;
+
+                let reopener = ProviderFactoryReopener::new(db, chain_spec.clone(), static_files)?;
+                if reopener
+                    .provider_factory_unchecked()
+                    .static_file_provider()
+                    .get_highest_static_file_block(StaticFileSegment::Headers)
+                    .is_none()
+                {
+                    eyre::bail!("No headers in static files. Check your static files path configuration.");
+                }
+                Ok(reopener)
+            })
+            .collect()
     }
 
     /// Creates threadpool for root hash calculation, should be created once per process.
@@ -331,17 +366,6 @@ impl BaseConfig {
         let path_expanded = shellexpand::tilde(&path).to_string();
 
         Ok(path_expanded.parse()?)
-    }
-
-    pub fn resolve_l2_paths(&self) -> eyre::Result<(Vec<String>, Vec<String>)> {
-        let ipc_paths = resolve_env_or_values(&self.l2_el_node_ipc_paths)?;
-        let data_dirs = resolve_env_or_values(&self.l2_reth_datadirs)?;
-
-        if ipc_paths.len() != data_dirs.len() {
-            return Err(eyre::eyre!("Number of L2 IPC paths and data directories must match"));
-        }
-
-        Ok((ipc_paths, data_dirs))
     }
 }
 
@@ -463,9 +487,10 @@ impl Default for BaseConfig {
             simulation_threads: 1,
             sbundle_mergeabe_signers: None,
             //L2 related
-            l2_el_node_ipc_paths: vec!["/tmp/reth.ipc".into()],
+            l2_ipc_paths: vec!["/tmp/reth.ipc".into()],
             l2_reth_datadirs: vec![DEFAULT_RETH_DB_PATH.into()],
             gwyneth_chain_ids: Vec::new(),
+            l2_server_ports: vec![(DEFAULT_INCOMING_BUNDLES_PORT + 1) as u64],
         }
     }
 }
@@ -477,7 +502,7 @@ pub fn create_provider_factory(
     reth_datadir: Option<&Path>,
     reth_db_path: Option<&Path>,
     reth_static_files_path: Option<&Path>,
-    chain_spec: Arc<ChainSpec>,
+chain_spec: Arc<ChainSpec>,
     rw: bool,
 ) -> eyre::Result<ProviderFactoryReopener<Arc<DatabaseEnv>>> {
     // shellexpand the reth datadir

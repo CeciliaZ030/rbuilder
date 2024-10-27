@@ -77,6 +77,7 @@ pub async fn run<ConfigType: LiveBuilderConfig>(
 
     let config: ConfigType = load_config_toml_and_env(cli.config)?;
     config.base_config().setup_tracing_subsriber()?;
+    println!("config from toml: {:?}", config);
 
     let cancel = CancellationToken::new();
 
