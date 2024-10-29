@@ -49,8 +49,6 @@ pub fn run_sim_worker<DB: Database + Clone + Send + 'static>(
             sleep(Duration::from_millis(500));
         };
 
-        println!("Brecht: simming 3");
-
         let mut provider_factories = HashMap::default();
         for (chain_id, provider_factory) in provider_factory.iter() {
             match provider_factory.check_consistency_and_reopen_if_needed(
