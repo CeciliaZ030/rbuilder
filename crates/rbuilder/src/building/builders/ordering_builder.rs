@@ -24,7 +24,7 @@ use reth_provider::StateProvider;
 use revm_primitives::ChainAddress;
 use tokio_util::sync::CancellationToken;
 
-use crate::utils::check_provider_factory_health;
+use crate::utils::{check_provider_factory_health, ProviderFactoryUnchecked};
 use reth::tasks::pool::BlockingTaskPool;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
 use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
@@ -71,10 +71,10 @@ impl OrderingBuilderConfig {
 pub fn run_ordering_builder<P, DB>(input: LiveBuilderInput<P, DB>, config: &OrderingBuilderConfig)
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + ProviderFactoryUnchecked<DB> + Clone + 'static,
 {
     let mut order_intake_consumer = OrderIntakeConsumer::new(
-        input.provider.clone(),
+        input.provider_factory.clone(),
         input.input,
         input.ctx.chains.iter().map(|(chain_id, ctx)| (*chain_id, ctx.attributes.parent)).collect(),
         config.sorting,
@@ -82,7 +82,7 @@ where
     );
 
     let mut builder = OrderingBuilderContext::new(
-        input.provider.clone(),
+        input.provider_factory.clone(),
         input.root_hash_task_pool,
         input.builder_name,
         input.ctx,
@@ -221,7 +221,7 @@ pub struct OrderingBuilderContext<P, DB> {
 impl<P, DB> OrderingBuilderContext<P, DB>
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + ProviderFactoryUnchecked<DB> + Clone + 'static,
 {
     pub fn new(
         provider_factory: HashMap<u64, P>,
@@ -274,7 +274,7 @@ where
         // Create a new ctx to remove builder_signer if necessary
         let new_ctx = self.ctx.clone();
         for (chain_id, provider_factory) in self.provider_factory.iter() {
-            check_provider_factory_health(self.ctx.chains[chain_id].block(), provider_factory)?;
+            check_provider_factory_health(self.ctx.chains[chain_id].block(),  &provider_factory.provider_factory_unchecked())?;
             if use_suggested_fee_recipient_as_coinbase {
                 self.ctx.chains.get_mut(chain_id).unwrap().modify_use_suggested_fee_recipient_as_coinbase();
             }
@@ -284,7 +284,7 @@ where
         self.order_attempts.clear();
 
         let mut block_building_helper = BlockBuildingHelperFromProvider::new(
-            self.provider.clone(),
+            self.provider_factory.clone(),
             self.root_hash_task_pool.clone(),
             self.root_hash_config.clone(),
             new_ctx,

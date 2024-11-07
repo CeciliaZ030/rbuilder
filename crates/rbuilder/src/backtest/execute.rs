@@ -57,7 +57,7 @@ pub struct BacktestBlockInput {
 
 pub fn backtest_prepare_ctx_for_block<P>(
     block_data: BlockData,
-    provider: P,
+    provider_factory: P,
     chain_spec: Arc<ChainSpec>,
     build_block_lag_ms: i64,
     blocklist: HashSet<Address>,
@@ -88,7 +88,7 @@ where
         Some(builder_signer),
     );
     let mut provider_factories = HashMap::default();
-    provider_factories.insert(chain_spec.chain.id(), provider.clone());
+    provider_factories.insert(chain_spec.chain.id(), provider_factory.clone());
     let (sim_orders, sim_errors) =
         simulate_all_orders_with_sim_tree(provider_factories, &ctx, &orders, false)?;
     Ok(BacktestBlockInput {
@@ -101,7 +101,7 @@ where
 #[allow(clippy::too_many_arguments)]
 pub fn backtest_simulate_block<P, DB, ConfigType>(
     block_data: BlockData,
-    provider: P,
+    provider_factory: P,
     chain_spec: Arc<ChainSpec>,
     build_block_lag_ms: i64,
     builders_names: Vec<String>,
@@ -120,7 +120,7 @@ where
         sim_errors,
     } = backtest_prepare_ctx_for_block(
         block_data.clone(),
-        provider.clone(),
+        provider_factory.clone(),
         chain_spec.clone(),
         build_block_lag_ms,
         blocklist,
@@ -166,7 +166,7 @@ where
             builder_name: building_algorithm_name.clone(),
             sbundle_mergeabe_signers: sbundle_mergeabe_signers.to_vec(),
             sim_orders: &sim_orders,
-            provider: provider.clone(),
+            provider_factory: provider_factory.clone(),
             cached_reads,
         };
 

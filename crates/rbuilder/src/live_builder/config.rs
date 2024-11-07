@@ -305,7 +305,7 @@ impl LiveBuilderConfig for Config {
         )?;
 
         let (wallet_balance_watcher, wallet_history) = WalletBalanceWatcher::new(
-            provider_factory,
+            provider_factory.clone(),
             self.base_config.coinbase_signer()?.address.1,
             WALLET_INIT_HISTORY_SIZE,
         )?;

@@ -239,7 +239,7 @@ pub struct BacktestSimulateBlockInput<'a, P> {
     pub builder_name: String,
     pub sbundle_mergeabe_signers: Vec<Address>,
     pub sim_orders: &'a Vec<SimulatedOrder>,
-    pub provider: P,
+    pub provider_factory: P,
     pub cached_reads: Option<CachedReads>,
 }
 
