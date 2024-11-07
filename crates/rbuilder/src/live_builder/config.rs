@@ -49,7 +49,7 @@ use eyre::Context;
 use reth::tasks::pool::BlockingTaskPool;
 use reth_chainspec::{Chain, ChainSpec, NamedChain};
 use reth_db::{Database, DatabaseEnv};
-use reth_payload_builder::database::SyncCachedReads as CachedReads;
+use reth_payload_builder::database::SyncCachedReads;
 use reth_primitives::StaticFileSegment;
 use reth_provider::{
     DatabaseProviderFactory, HeaderProvider, StateProviderFactory, StaticFileProviderFactory,
@@ -299,7 +299,6 @@ impl LiveBuilderConfig for Config {
         DB: Database + Clone + 'static,
         P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
     {
-        let provider_factory = self.base_config.provider_factory()?;
         let (sink_sealed_factory, relays) = self.l1_config.create_relays_sealed_sink_factory(
             self.base_config.chain_spec()?,
             Box::new(NullBidObserver {}),
@@ -362,7 +361,7 @@ impl LiveBuilderConfig for Config {
         &self,
         building_algorithm_name: &str,
         input: BacktestSimulateBlockInput<'_, P>,
-    ) -> eyre::Result<(Block, CachedReads)>
+    ) -> eyre::Result<(Block, SyncCachedReads)>
     where
         DB: Database + Clone + 'static,
         P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,

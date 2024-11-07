@@ -88,7 +88,7 @@ where
         Some(builder_signer),
     );
     let mut provider_factories = HashMap::default();
-    provider_factories.insert(chain_spec.chain.id(), provider_factory.clone());
+    provider_factories.insert(chain_spec.chain.id(), provider.clone());
     let (sim_orders, sim_errors) =
         simulate_all_orders_with_sim_tree(provider_factories, &ctx, &orders, false)?;
     Ok(BacktestBlockInput {

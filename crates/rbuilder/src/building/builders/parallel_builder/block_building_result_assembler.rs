@@ -27,7 +27,7 @@ use crate::{
 
 /// Assembles block building results from the best orderings of order groups.
 pub struct BlockBuildingResultAssembler<P, DB> {
-    provider: P,
+    provider_factory: HashMap<u64, P>,
     root_hash_task_pool: BlockingTaskPool,
     ctx: BlockBuildingContext,
     cancellation_token: CancellationToken,

@@ -36,7 +36,7 @@ use crate::{
 use alloy_primitives::Address;
 use reth::tasks::pool::BlockingTaskPool;
 use reth_db::database::Database;
-use reth_payload_builder::database::CachedReads;
+use reth_payload_builder::database::SyncCachedReads;
 use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 
 use self::{
@@ -109,7 +109,7 @@ where
             group_result_sender,
             input.cancel.clone(),
             input.ctx.clone(),
-            input.provider.clone(),
+            input.provider_factory.clone(),
             Arc::clone(&simulation_cache),
         );
 
@@ -120,7 +120,7 @@ where
             config,
             input.root_hash_config,
             Arc::clone(&best_results),
-            input.provider.clone(),
+            input.provider_factory.clone(),
             input.root_hash_task_pool.clone(),
             input.ctx.clone(),
             input.cancel.clone(),
@@ -267,7 +267,7 @@ fn run_order_intake(
 pub fn parallel_build_backtest<P, DB>(
     input: BacktestSimulateBlockInput<'_, P>,
     config: ParallelBuilderConfig,
-) -> Result<(Block, CachedReads)>
+) -> Result<(Block, SyncCachedReads)>
 where
     DB: Database + Clone + 'static,
     P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,

@@ -24,17 +24,15 @@ use reth_provider::StateProvider;
 use revm_primitives::ChainAddress;
 use tokio_util::sync::CancellationToken;
 
-use crate::{roothash::RootHashConfig, utils::check_provider_factory_health};
+use crate::utils::check_provider_factory_health;
 use reth::tasks::pool::BlockingTaskPool;
-use reth_db::database::Database;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
 use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 use serde::Deserialize;
 use std::{
     marker::PhantomData,
     {os::unix::fs::lchown, sync::Arc, thread::sleep, time::{Duration, Instant},
-};
-use tokio_util::sync::CancellationToken};
+}};
 use tracing::{error, info_span, trace};
 
 use super::{
@@ -234,7 +232,7 @@ where
         root_hash_config: RootHashConfig,
     ) -> Self {
         Self {
-            provider,
+            provider_factory,
             root_hash_task_pool,
             builder_name,
             ctx,

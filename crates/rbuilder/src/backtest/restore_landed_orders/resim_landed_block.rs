@@ -54,7 +54,7 @@ where
         None,
     );
 
-    let state_provider = provider_factory.history_by_block_hash(ctx.chains[&chain_spec.chain().id()].attributes.parent)?;
+    let state_provider = provider.history_by_block_hash(ctx.chains[&chain_spec.chain().id()].attributes.parent)?;
     let mut partial_block = PartialBlock::new(true, None);
     let mut state = BlockState::new(state_provider, chain_spec.chain().id());
 

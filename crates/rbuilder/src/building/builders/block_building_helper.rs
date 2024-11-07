@@ -222,7 +222,7 @@ where
             builder_name,
             building_ctx,
             built_block_trace: BuiltBlockTrace::new(),
-            provider,
+            provider_factory,
             root_hash_task_pool,
             root_hash_config,
             cancel_on_fatal_error,

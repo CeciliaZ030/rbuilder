@@ -8,7 +8,7 @@ use crate::{
         BlockBuildingContext,
     },
     live_builder::{payload_events::MevBoostSlotData, simulation::SlotOrderSimResults},
-    roothash::run_trie_prefetcher,
+    roothash::run_trie_prefetcher, utils::ProviderFactoryReopener,
 };
 use ahash::HashMap;
 use reth_db::Database;
@@ -40,7 +40,7 @@ pub struct BlockBuildingPool<P, DB> {
 impl<P, DB> BlockBuildingPool<P, DB>
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + ProviderFactoryReopener<DB> + 'static,
 {
     pub fn new(
         provider_factory: HashMap<u64, P>,
@@ -51,7 +51,7 @@ where
         run_sparse_trie_prefetcher: bool,
     ) -> Self {
         BlockBuildingPool {
-            provider,
+            provider_factory,
             builders,
             sink_factory,
             orderpool_subscribers,
@@ -69,7 +69,7 @@ where
         global_cancellation: CancellationToken,
         max_time_to_build: Duration,
     ) {
-        let block_cancellation = global_cancellation.child_token();
+        let block_cancellation: CancellationToken = global_cancellation.child_token();
 
         let cancel = block_cancellation.clone();
         tokio::spawn(async move {
@@ -145,17 +145,24 @@ where
 
         if self.run_sparse_trie_prefetcher {
             let input = broadcast_input.subscribe();
-            let provider = self.provider.clone();
-            tokio::task::spawn_blocking(move || {
-                run_trie_prefetcher(
-                    ctx.attributes.parent,
-                    ctx.shared_sparse_mpt_cache,
-                    provider,
-                    input,
-                    cancel.clone(),
-                );
-                debug!(block = block_number, "Stopped trie prefetcher job");
-            });
+            
+            // Spawn a prefetcher task for each chain
+            for (chain_id, provider) in self.provider_factory.clone() {
+                let chain_input = input.resubscribe();
+                let chain_cancel = cancel.clone();
+                let chain_ctx = ctx.clone();
+                
+                tokio::task::spawn_blocking(move || {
+                    run_trie_prefetcher(
+                        chain_ctx.chains[&chain_id].attributes.parent,
+                        chain_ctx.chains[&chain_id].shared_sparse_mpt_cache,
+                        provider,
+                        chain_input,
+                        chain_cancel,
+                    );
+                    //debug!(chain = chain_id, "Stopped trie prefetcher job");
+                });
+            }
         }
 
         tokio::spawn(multiplex_job(input.orders, broadcast_input));

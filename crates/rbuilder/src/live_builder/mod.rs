@@ -40,7 +40,7 @@ use std::{cmp::min, path::PathBuf, sync::Arc, thread::sleep, time::Duration};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, , error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use layer2_info::Layer2Info;
 
