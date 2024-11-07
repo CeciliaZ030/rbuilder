@@ -32,9 +32,6 @@ pub struct ProviderFactoryReopener<DB> {
     /// Patch to disable checking on test mode. Is ugly but ProviderFactoryReopener should die shortly (5/24/2024).
     testing_mode: bool,
 }
-pub trait ProviderFactoryReopener<DB> {
-    fn check_consistency_and_reopen_if_needed(&self, block_number: u64) -> eyre::Result<ProviderFactory<DB>>;
-}
 
 impl<DB: Database + Clone> ProviderFactoryReopener<DB> {
     pub fn new(db: DB, chain_spec: Arc<ChainSpec>, static_files_path: PathBuf) -> RethResult<Self> {

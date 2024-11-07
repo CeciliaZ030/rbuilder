@@ -292,7 +292,7 @@ impl LiveBuilderConfig for Config {
     }
     async fn new_builder<P, DB>(
         &self,
-        provider: P,
+        provider_factory: P,
         cancellation_token: tokio_util::sync::CancellationToken,
     ) -> eyre::Result<super::LiveBuilder<P, DB, MevBoostSlotDataGenerator>>
     where
@@ -305,7 +305,7 @@ impl LiveBuilderConfig for Config {
         )?;
 
         let (wallet_balance_watcher, wallet_history) = WalletBalanceWatcher::new(
-            provider_factory.provider_factory_unchecked(),
+            provider_factory,
             self.base_config.coinbase_signer()?.address.1,
             WALLET_INIT_HISTORY_SIZE,
         )?;
@@ -333,7 +333,7 @@ impl LiveBuilderConfig for Config {
                 sink_factory,
                 payload_event,
                 self.base_config.gwyneth_chain_ids.clone(),
-                provider_factory,
+                provider_factory.clone(),
             )
             .await?;
         let root_hash_config = self.base_config.live_root_hash_config()?;

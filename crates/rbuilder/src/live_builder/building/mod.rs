@@ -16,7 +16,7 @@ use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 use reth_provider::ProviderFactory;
 use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, trace};
+use tracing::{error, trace};
 
 use super::{
     order_input::{
@@ -40,7 +40,7 @@ pub struct BlockBuildingPool<P, DB> {
 impl<P, DB> BlockBuildingPool<P, DB>
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + ProviderFactoryReopener<DB> + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
 {
     pub fn new(
         provider_factory: HashMap<u64, P>,
@@ -113,24 +113,26 @@ where
         // Brecht: start building
         let builder_sink = self.sink_factory.create_sink(slot_data, cancel.clone());
         let (broadcast_input, _) = broadcast::channel(10_000);
-
-        let provider_factories: HashMap<u64, ProviderFactory<DB>> = self
-            .provider_factory.iter().map(|(chain_id, provider_factory)| {
-                let block_number = ctx.chains[chain_id].block_env.number.to::<u64>();
-                match provider_factory.check_consistency_and_reopen_if_needed(block_number)
-                {
-                    Ok(provider_factory) => (*chain_id, provider_factory),
-                    Err(err) => {
-                        panic!("Error while reopening provider factory");
-                    }
+    
+        // Get provider factories for each chain
+        let provider_factories: HashMap<u64, P> = self
+        .provider_factory
+        .iter()
+        .filter_map(|(chain_id, provider_factory)| {
+            let block_number = ctx.chains[chain_id].block_env.number.to::<u64>();
+            match provider_factory.check_consistency_and_reopen_if_needed(block_number) {
+                Ok(_) => Some((*chain_id, provider_factory.clone())),  // Keep original provider type
+                Err(err) => {
+                    error!(?err, "Error while reopening provider factory");
+                    None
                 }
-            }).collect();
+            }
+        })
+        .collect();
 
         for builder in self.builders.iter() {
-            //let builder_name = builder.name();
-            //debug!(block = block_number, builder_name, "Spawning builder job");
-            let input = BlockBuildingAlgorithmInput::<DB> {
-                provider_factory: provider_factories.clone(),
+            let input = BlockBuildingAlgorithmInput {
+                provider_factory: provider_factories.clone(),  // Now using the correct type P
                 ctx: ctx.clone(),
                 input: broadcast_input.subscribe(),
                 sink: builder_sink.clone(),
@@ -139,7 +141,6 @@ where
             let builder = builder.clone();
             tokio::task::spawn_blocking(move || {
                 builder.build_blocks(input);
-                //debug!(block = block_number, builder_name, "Stopped builder job");
             });
         }
 
@@ -155,7 +156,7 @@ where
                 tokio::task::spawn_blocking(move || {
                     run_trie_prefetcher(
                         chain_ctx.chains[&chain_id].attributes.parent,
-                        chain_ctx.chains[&chain_id].shared_sparse_mpt_cache,
+                        chain_ctx.chains[&chain_id].shared_sparse_mpt_cache.clone(),
                         provider,
                         chain_input,
                         chain_cancel,
