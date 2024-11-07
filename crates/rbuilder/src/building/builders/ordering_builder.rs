@@ -5,6 +5,7 @@
 //! The described algorithm is ran continuously adding new SimulatedOrders (they arrive on real time!) on each iteration until we run out of time (slot ends).
 //! Sorting criteria are described on [`Sorting`].
 //! For some more details see [`OrderingBuilderConfig`]
+use crate::roothash::RootHashConfig;
 use crate::{
     building::{
         block_orders_from_sim_orders,
@@ -25,13 +26,19 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{roothash::RootHashConfig, utils::check_provider_factory_health};
 use reth::tasks::pool::BlockingTaskPool;
+use reth_db::database::Database;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
+use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 use serde::Deserialize;
-use std::{os::unix::fs::lchown, sync::Arc, thread::sleep, time::{Duration, Instant}};
+use std::{
+    marker::PhantomData,
+    {os::unix::fs::lchown, sync::Arc, thread::sleep, time::{Duration, Instant},
+};
+use tokio_util::sync::CancellationToken};
 use tracing::{error, info_span, trace};
 
 use super::{
-    block_building_helper::BlockBuildingHelperFromDB, handle_building_error,
+    block_building_helper::BlockBuildingHelperFromProvider, handle_building_error,
     BacktestSimulateBlockInput, Block, BlockBuildingAlgorithm, BlockBuildingAlgorithmInput,
 };
 
@@ -63,12 +70,13 @@ impl OrderingBuilderConfig {
     }
 }
 
-pub fn run_ordering_builder<DB: Database + Clone + 'static>(
-    input: LiveBuilderInput<DB>,
-    config: &OrderingBuilderConfig,
-) {
+pub fn run_ordering_builder<P, DB>(input: LiveBuilderInput<P, DB>, config: &OrderingBuilderConfig)
+where
+    DB: Database + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+{
     let mut order_intake_consumer = OrderIntakeConsumer::new(
-        input.provider_factory.clone(),
+        input.provider.clone(),
         input.input,
         input.ctx.chains.iter().map(|(chain_id, ctx)| (*chain_id, ctx.attributes.parent)).collect(),
         config.sorting,
@@ -76,7 +84,7 @@ pub fn run_ordering_builder<DB: Database + Clone + 'static>(
     );
 
     let mut builder = OrderingBuilderContext::new(
-        input.provider_factory.clone(),
+        input.provider.clone(),
         input.root_hash_task_pool,
         input.builder_name,
         input.ctx,
@@ -132,10 +140,14 @@ pub fn run_ordering_builder<DB: Database + Clone + 'static>(
     }
 }
 
-pub fn backtest_simulate_block<DB: Database + Clone + 'static>(
+pub fn backtest_simulate_block<P, DB>(
     ordering_config: OrderingBuilderConfig,
-    input: BacktestSimulateBlockInput<'_, DB>,
-) -> eyre::Result<(Block, CachedReads)> {
+    input: BacktestSimulateBlockInput<'_, P>,
+) -> eyre::Result<(Block, CachedReads)>
+where
+    DB: Database + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+{
     println!("backtest_simulate_block");
 
     let mut provider_factories = HashMap::default();
@@ -143,7 +155,6 @@ pub fn backtest_simulate_block<DB: Database + Clone + 'static>(
 
     let mut ctxs = HashMap::default();
     ctxs.insert(input.ctx.parent_chain_id, input.ctx.clone());
-
     let use_suggested_fee_recipient_as_coinbase = ordering_config.coinbase_payment;
     let state_provider = input
         .provider_factory
@@ -191,8 +202,8 @@ pub fn backtest_simulate_block<DB: Database + Clone + 'static>(
 }
 
 #[derive(Debug)]
-pub struct OrderingBuilderContext<DB> {
-    provider_factory: HashMap<u64, ProviderFactory<DB>>,
+pub struct OrderingBuilderContext<P, DB> {
+    provider_factory: HashMap<u64, P>,
     root_hash_task_pool: BlockingTaskPool,
     builder_name: String,
     ctx: BlockBuildingContext,
@@ -205,11 +216,17 @@ pub struct OrderingBuilderContext<DB> {
     // scratchpad
     failed_orders: HashSet<OrderId>,
     order_attempts: HashMap<OrderId, usize>,
+
+    phantom: PhantomData<DB>,
 }
 
-impl<DB: Database + Clone + 'static> OrderingBuilderContext<DB> {
+impl<P, DB> OrderingBuilderContext<P, DB>
+where
+    DB: Database + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+{
     pub fn new(
-        provider_factory: HashMap<u64, ProviderFactory<DB>>,
+        provider_factory: HashMap<u64, P>,
         root_hash_task_pool: BlockingTaskPool,
         builder_name: String,
         ctx: BlockBuildingContext,
@@ -217,7 +234,7 @@ impl<DB: Database + Clone + 'static> OrderingBuilderContext<DB> {
         root_hash_config: RootHashConfig,
     ) -> Self {
         Self {
-            provider_factory,
+            provider,
             root_hash_task_pool,
             builder_name,
             ctx,
@@ -226,6 +243,7 @@ impl<DB: Database + Clone + 'static> OrderingBuilderContext<DB> {
             cached_reads: None,
             failed_orders: HashSet::default(),
             order_attempts: HashMap::default(),
+            phantom: PhantomData,
         }
     }
 
@@ -267,8 +285,8 @@ impl<DB: Database + Clone + 'static> OrderingBuilderContext<DB> {
         self.failed_orders.clear();
         self.order_attempts.clear();
 
-        let mut block_building_helper = BlockBuildingHelperFromDB::new(
-            self.provider_factory.clone(),
+        let mut block_building_helper = BlockBuildingHelperFromProvider::new(
+            self.provider.clone(),
             self.root_hash_task_pool.clone(),
             self.root_hash_config.clone(),
             new_ctx,
@@ -382,13 +400,16 @@ impl OrderingBuildingAlgorithm {
     }
 }
 
-impl<DB: Database + Clone + 'static> BlockBuildingAlgorithm<DB> for OrderingBuildingAlgorithm {
+impl<P, DB> BlockBuildingAlgorithm<P, DB> for OrderingBuildingAlgorithm
+where
+    DB: Database + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+{
     fn name(&self) -> String {
         self.name.clone()
     }
 
-    fn build_blocks(&self, input: BlockBuildingAlgorithmInput<DB>) {
-
+    fn build_blocks(&self, input: BlockBuildingAlgorithmInput<P>) {
         let live_input = LiveBuilderInput {
             provider_factory: input.provider_factory,
             root_hash_config: self.root_hash_config.clone(),
@@ -399,6 +420,7 @@ impl<DB: Database + Clone + 'static> BlockBuildingAlgorithm<DB> for OrderingBuil
             builder_name: self.name.clone(),
             cancel: input.cancel,
             sbundle_mergeabe_signers: self.sbundle_mergeabe_signers.clone(),
+            phantom: Default::default(),
         };
         run_ordering_builder(live_input, &self.config);
     }

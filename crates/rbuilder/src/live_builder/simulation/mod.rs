@@ -8,10 +8,10 @@ use crate::{
     },
     live_builder::order_input::orderpool::OrdersForBlock,
     primitives::{OrderId, SimulatedOrder},
-    utils::{gen_uid, ProviderFactoryReopener},
+    utils::gen_uid,
 };
 use ahash::HashMap;
-use reth_db::database::Database;
+use reth_provider::StateProviderFactory;
 use simulation_job::SimulationJob;
 use std::sync::{Arc, Mutex};
 use tokio::{sync::mpsc, task::JoinHandle};
@@ -49,8 +49,8 @@ pub struct CurrentSimulationContexts {
 /// 4 IMPORTANT: When done with the simulations signal the provided block_cancellation.
 
 #[derive(Debug)]
-pub struct OrderSimulationPool<DB> {
-    provider_factory: HashMap<u64, ProviderFactoryReopener<DB>>,
+pub struct OrderSimulationPool<P> {
+    provider_factory: HashMap<u64, P>,
     running_tasks: Arc<Mutex<Vec<JoinHandle<()>>>>,
     current_contexts: Arc<Mutex<CurrentSimulationContexts>>,
     worker_threads: Vec<std::thread::JoinHandle<()>>,
@@ -65,12 +65,11 @@ pub enum SimulatedOrderCommand {
     Cancellation(OrderId),
 }
 
-impl<DB: Database + Clone + Send + 'static> OrderSimulationPool<DB> {
-    pub fn new(
-        provider_factory: HashMap<u64, ProviderFactoryReopener<DB>>,
-        num_workers: usize,
-        global_cancellation: CancellationToken,
-    ) -> Self {
+impl<P> OrderSimulationPool<P>
+where
+    P: StateProviderFactory + Clone + 'static,
+{
+    pub fn new(provider_factory: HashMap<u64, provider: P>, num_workers: usize, global_cancellation: CancellationToken) -> Self {
         let mut result = Self {
             provider_factory,
             running_tasks: Arc::new(Mutex::new(Vec::new())),
@@ -170,6 +169,7 @@ mod tests {
         building::testing::test_chain_state::{BlockArgs, NamedAddr, TestChainState, TxArgs},
         live_builder::order_input::order_sink::OrderPoolCommand,
         primitives::{MempoolTx, Order, TransactionSignedEcRecoveredWithBlobs},
+        utils::ProviderFactoryReopener,
     };
     use reth_evm::provider;
     use reth_primitives::U256;
@@ -180,10 +180,9 @@ mod tests {
 
         // Create simulation core
         let cancel = CancellationToken::new();
-        let provider_factory_reopener = ProviderFactoryReopener::new_from_existing_for_testing(
-            test_context.provider_factory().clone(),
-        )
-        .unwrap();
+        let provider_factory_reopener =
+            ProviderFactoryReopener::new_from_existing(test_context.provider_factory().clone())
+                .unwrap();
 
         let mut providers = HashMap::default();
         providers.insert(test_context.chain_spec.chain.id(), provider_factory_reopener.clone());

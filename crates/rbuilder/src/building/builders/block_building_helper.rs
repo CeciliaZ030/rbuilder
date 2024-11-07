@@ -1,14 +1,17 @@
 use std::{
-    cmp::max, sync::Arc, time::{Duration, Instant}
+    cmp::max,
+    sync::Arc,
+    marker::PhantomData,
+    time::{Duration, Instant},
 };
 
 use ahash::HashMap;
 use alloy_primitives::U256;
 use reth::tasks::pool::BlockingTaskPool;
-use reth_db::database::Database;
+use reth_db::Database;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
 use reth_primitives::format_ether;
-use reth_provider::{BlockNumReader, ProviderFactory, StateProvider};
+use reth_provider::{DatabaseProviderFactory, StateProviderFactory, StateProvider};
 use revm_primitives::ChainAddress;
 use time::OffsetDateTime;
 use tokio_util::sync::CancellationToken;
@@ -81,9 +84,13 @@ pub trait BlockBuildingHelper: Send + Sync {
     fn update_cached_reads(&mut self, cached_reads: CachedReads);
 }
 
-/// Implementation of BlockBuildingHelper based on a ProviderFactory<DB>
+/// Implementation of BlockBuildingHelper based on a generic Provider
 #[derive(Clone)]
-pub struct BlockBuildingHelperFromDB<DB> {
+pub struct BlockBuildingHelperFromProvider<P, DB>
+where
+    DB: Database + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+{
     /// Balance of fee recipient before we stared building.
     _fee_recipient_balance_start: U256,
     /// Accumulated changes for the block (due to commit_order calls).
@@ -98,11 +105,12 @@ pub struct BlockBuildingHelperFromDB<DB> {
     building_ctx: BlockBuildingContext,
     built_block_trace: BuiltBlockTrace,
     /// Needed to get the initial state and the final root hash calculation.
-    provider_factory: HashMap<u64, ProviderFactory<DB>>,
+    provider_factory: HashMap<u64, P>,
     root_hash_task_pool: BlockingTaskPool,
     root_hash_config: RootHashConfig,
     /// Token to cancel in case of fatal error (if we believe that it's impossible to build for this block).
     cancel_on_fatal_error: CancellationToken,
+    phantom: PhantomData<DB>,
     origin_chain_id: u64,
 }
 
@@ -145,7 +153,11 @@ pub struct FinalizeBlockResult {
     pub cached_reads: CachedReads,
 }
 
-impl<DB: Database + Clone + 'static> BlockBuildingHelperFromDB<DB> {
+impl<P, DB> BlockBuildingHelperFromProvider<P, DB>
+where
+    DB: Database + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+{
     /// allow_tx_skip: see [`PartialBlockFork`]
     /// Performs initialization:
     /// - Query fee_recipient_balance_start.
@@ -153,7 +165,7 @@ impl<DB: Database + Clone + 'static> BlockBuildingHelperFromDB<DB> {
     /// - Estimate payout tx cost.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        provider_factory: HashMap<u64, ProviderFactory<DB>>,
+        provider_factory: HashMap<u64, P>,
         root_hash_task_pool: BlockingTaskPool,
         root_hash_config: RootHashConfig,
         building_ctx: BlockBuildingContext,
@@ -210,10 +222,11 @@ impl<DB: Database + Clone + 'static> BlockBuildingHelperFromDB<DB> {
             builder_name,
             building_ctx,
             built_block_trace: BuiltBlockTrace::new(),
-            provider_factory,
+            provider,
             root_hash_task_pool,
             root_hash_config,
             cancel_on_fatal_error,
+            phantom: PhantomData,
             origin_chain_id,
         })
     }
@@ -233,6 +246,7 @@ impl<DB: Database + Clone + 'static> BlockBuildingHelperFromDB<DB> {
         telemetry::add_built_block_metrics(
             built_block_trace.fill_time,
             built_block_trace.finalize_time,
+            built_block_trace.root_hash_time,
             txs,
             blobs,
             gas_used,
@@ -305,7 +319,11 @@ impl<DB: Database + Clone + 'static> BlockBuildingHelperFromDB<DB> {
     }
 }
 
-impl<DB: Database + Clone + 'static> BlockBuildingHelper for BlockBuildingHelperFromDB<DB> {
+impl<P, DB> BlockBuildingHelper for BlockBuildingHelperFromProvider<P, DB>
+where
+    DB: Database + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+{
     /// Forwards to partial_block and updates trace.
     fn commit_order(
         &mut self,

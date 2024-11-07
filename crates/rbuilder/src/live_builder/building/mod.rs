@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use crate::{
     building::{
@@ -8,10 +8,11 @@ use crate::{
         BlockBuildingContext,
     },
     live_builder::{payload_events::MevBoostSlotData, simulation::SlotOrderSimResults},
-    utils::ProviderFactoryReopener,
+    roothash::run_trie_prefetcher,
 };
 use ahash::HashMap;
-use reth_db::database::Database;
+use reth_db::Database;
+use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 use reth_provider::ProviderFactory;
 use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
@@ -26,28 +27,37 @@ use super::{
 };
 
 #[derive(Debug)]
-pub struct BlockBuildingPool<DB> {
-    provider_factory: HashMap<u64, ProviderFactoryReopener<DB>>,
-    builders: Vec<Arc<dyn BlockBuildingAlgorithm<DB>>>,
+pub struct BlockBuildingPool<P, DB> {
+    provider_factory: HashMap<u64, P>,
+    builders: Vec<Arc<dyn BlockBuildingAlgorithm<P, DB>>>,
     sink_factory: Box<dyn UnfinishedBlockBuildingSinkFactory>,
     orderpool_subscribers: HashMap<u64, order_input::OrderPoolSubscriber>,
-    order_simulation_pool: OrderSimulationPool<DB>,
+    order_simulation_pool: OrderSimulationPool<P>,
+    run_sparse_trie_prefetcher: bool,
+    phantom: PhantomData<DB>,
 }
 
-impl<DB: Database + Clone + 'static> BlockBuildingPool<DB> {
+impl<P, DB> BlockBuildingPool<P, DB>
+where
+    DB: Database + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+{
     pub fn new(
-        provider_factory: HashMap<u64, ProviderFactoryReopener<DB>>,
-        builders: Vec<Arc<dyn BlockBuildingAlgorithm<DB>>>,
+        provider_factory: HashMap<u64, P>,
+        builders: Vec<Arc<dyn BlockBuildingAlgorithm<P, DB>>>,
         sink_factory: Box<dyn UnfinishedBlockBuildingSinkFactory>,
         orderpool_subscribers: HashMap<u64, order_input::OrderPoolSubscriber>,
-        order_simulation_pool: OrderSimulationPool<DB>,
+        order_simulation_pool: OrderSimulationPool<P>,
+        run_sparse_trie_prefetcher: bool,
     ) -> Self {
         BlockBuildingPool {
-            provider_factory,
+            provider,
             builders,
             sink_factory,
             orderpool_subscribers,
             order_simulation_pool,
+            run_sparse_trie_prefetcher,
+            phantom: PhantomData,
         }
     }
 
@@ -130,6 +140,21 @@ impl<DB: Database + Clone + 'static> BlockBuildingPool<DB> {
             tokio::task::spawn_blocking(move || {
                 builder.build_blocks(input);
                 //debug!(block = block_number, builder_name, "Stopped builder job");
+            });
+        }
+
+        if self.run_sparse_trie_prefetcher {
+            let input = broadcast_input.subscribe();
+            let provider = self.provider.clone();
+            tokio::task::spawn_blocking(move || {
+                run_trie_prefetcher(
+                    ctx.attributes.parent,
+                    ctx.shared_sparse_mpt_cache,
+                    provider,
+                    input,
+                    cancel.clone(),
+                );
+                debug!(block = block_number, "Stopped trie prefetcher job");
             });
         }
 

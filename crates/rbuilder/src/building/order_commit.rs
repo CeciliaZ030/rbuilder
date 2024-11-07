@@ -434,8 +434,8 @@ impl<'a, 'b, Tracer: SimulationTracer> PartialBlockFork<'a, 'b, Tracer> {
         }
 
         let mut tx_env = TxEnv::default();
-        let tx_signed = tx_with_blobs.internal_tx_unsecure().clone().into_signed();
-        tx_signed.fill_tx_env(&mut tx_env, tx_signed.recover_signer().unwrap());
+        let tx_signed = tx_with_blobs.internal_tx_unsecure();
+        tx_signed.fill_tx_env(&mut tx_env, tx_signed.signer());
 
         let env = Env {
             cfg: ctx.initialized_cfg.cfg_env.clone(),
@@ -1044,16 +1044,11 @@ impl<'a, 'b, Tracer: SimulationTracer> PartialBlockFork<'a, 'b, Tracer> {
                 )?;
                 match res {
                     Ok(ok) => {
+                        // Builder does not sign txs in this code path, so allow negative coinbase
+                        // profit.
                         let coinbase_balance_after = self.state.balance(chain_ctx.block_env.coinbase)?;
-                        let coinbase_profit = match coinbase_profit(
-                            coinbase_balance_before,
-                            coinbase_balance_after,
-                        ) {
-                            Ok(profit) => profit,
-                            Err(err) => {
-                                return Ok(Err(err));
-                            }
-                        };
+                        let coinbase_profit =
+                            coinbase_balance_after.saturating_sub(coinbase_balance_before);
                         Ok(Ok(OrderOk {
                             coinbase_profit,
                             gas_used: ok.gas_used,
@@ -1082,16 +1077,11 @@ impl<'a, 'b, Tracer: SimulationTracer> PartialBlockFork<'a, 'b, Tracer> {
                 )?;
                 match res {
                     Ok(ok) => {
+                        // Builder does not sign txs in this code path, so allow negative coinbase
+                        // profit.
                         let coinbase_balance_after = self.state.balance(chain_ctx.block_env.coinbase)?;
-                        let coinbase_profit = match coinbase_profit(
-                            coinbase_balance_before,
-                            coinbase_balance_after,
-                        ) {
-                            Ok(profit) => profit,
-                            Err(err) => {
-                                return Ok(Err(err));
-                            }
-                        };
+                        let coinbase_profit =
+                            coinbase_balance_after.saturating_sub(coinbase_balance_before);
                         Ok(Ok(OrderOk {
                             coinbase_profit,
                             gas_used: ok.gas_used,
@@ -1121,6 +1111,8 @@ impl<'a, 'b, Tracer: SimulationTracer> PartialBlockFork<'a, 'b, Tracer> {
                 match res {
                     Ok(ok) => {
                         let coinbase_balance_after = self.state.balance(chain_ctx.block_env.coinbase)?;
+                        // Builder does sign txs in this code path, so do not allow negative coinbase
+                        // profit.
                         let coinbase_profit = match coinbase_profit(
                             coinbase_balance_before,
                             coinbase_balance_after,
