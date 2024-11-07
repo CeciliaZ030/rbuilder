@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -9,7 +10,8 @@ use alloy_rpc_types::{Block, BlockNumberOrTag, BlockTransactionsKind};
 use alloy_eips::BlockId;
 use alloy_pubsub::PubSubFrontend;
 use eyre::Result;
-use reth_db::DatabaseEnv;
+use reth_db::{DatabaseEnv, Database};
+use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 use tracing::warn;
 use reth_node_core::args::utils::chain_value_parser;
 
@@ -18,8 +20,11 @@ use crate::utils::ProviderFactoryReopener;
 use super::config::create_provider_factory;
 use super::order_input::OrderInputConfig;
 
-
-pub fn create_gwyneth_providers(chain_ids: Vec<u64>) -> eyre::Result<HashMap<u64, ProviderFactoryReopener<Arc<DatabaseEnv>>>> {
+pub fn create_gwyneth_providers<P, DB>(chain_ids: Vec<u64>) -> eyre::Result<HashMap<u64, P>>
+where
+    DB: Database + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+{
     let datadir_base = "/data/reth/gwyneth";
     let chain = chain_value_parser("/network-configs/genesis.json").expect("failed to load gwyneth chain spec");
 
@@ -38,28 +43,38 @@ pub fn create_gwyneth_providers(chain_ids: Vec<u64>) -> eyre::Result<HashMap<u64
 }
 
 #[derive(Debug)]
-pub struct GwynethNode<DB> {
-    pub provider_factory: ProviderFactoryReopener<DB>,
+pub struct GwynethNode<P, DB> {
+    pub provider_factory: P,  // Changed from ProviderFactoryReopener<DB> to P
     pub order_input_config: OrderInputConfig,
+    _phantom: PhantomData<DB>,  // Added phantom
 }
 
 #[derive(Debug)]
-pub struct Layer2Info<DB> {
+pub struct Layer2Info<P, DB> {  // Added P generic parameter
     pub ipc_providers: Arc<Mutex<HashMap<u64, (RootProvider<PubSubFrontend>, String)>>>,
     pub data_dirs: HashMap<u64, PathBuf>,
-    pub nodes: HashMap<u64, GwynethNode<DB>>,
+    pub nodes: HashMap<u64, GwynethNode<P, DB>>,
+    _phantom: PhantomData<DB>,  // Added phantom
 }
 
-impl<DB> PartialEq for Layer2Info<DB> {
+impl<P, DB> PartialEq for Layer2Info<P, DB> {
     fn eq(&self, other: &Self) -> bool {
         self.data_dirs == other.data_dirs
     }
 }
 
-impl<DB> Eq for Layer2Info<DB> {}
+impl<P, DB> Eq for Layer2Info<P, DB> {}
 
-impl<DB: Clone> Layer2Info<DB> {
-    pub async fn new(chain_ids: Vec<u64>, provider_factories: HashMap<u64, ProviderFactoryReopener<DB>>) -> Result<Self> {
+impl<P, DB> Layer2Info<P, DB> 
+where
+    DB: Database + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+{
+    pub async fn new(
+        chain_ids: Vec<u64>, 
+        provider_factories: HashMap<u64, P>
+    ) -> Result<Self> 
+    {
         let mut providers = HashMap::default();
         let mut data_dirs_map = HashMap::default();
 
@@ -86,7 +101,7 @@ impl<DB: Clone> Layer2Info<DB> {
             //     chain.clone(),
             // )?;
 
-            nodes.insert(chain_id, GwynethNode {
+            nodes.insert(chain_id, GwynethNode::<P, DB> {
                 provider_factory: provider_factories[&chain_id].clone(),
                 order_input_config: OrderInputConfig::new(
                     true,
@@ -98,6 +113,7 @@ impl<DB: Clone> Layer2Info<DB> {
                     Duration::from_millis(50),
                     10_000,
                 ),
+                _phantom: PhantomData,  // Initialize the phantom
             });
         }
 
@@ -105,6 +121,7 @@ impl<DB: Clone> Layer2Info<DB> {
             ipc_providers: Arc::new(Mutex::new(providers)),
             data_dirs: data_dirs_map,
             nodes,
+            _phantom: PhantomData,
         })
     }
 

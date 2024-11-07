@@ -6,7 +6,7 @@ use ahash::HashMap;
 use alloy_primitives::utils::format_ether;
 use reth::tasks::pool::BlockingTaskPool;
 use reth_db::Database;
-use reth_payload_builder::database::CachedReads;
+use reth_payload_builder::database::SyncCachedReads as CachedReads;
 use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 use std::sync::Arc;
 use std::{marker::PhantomData, time::Instant};
@@ -62,7 +62,7 @@ where
         config: &ParallelBuilderConfig,
         root_hash_config: RootHashConfig,
         best_results: Arc<BestResults>,
-        provider: P,
+        provider_factory: HashMap<u64, P>,
         root_hash_task_pool: BlockingTaskPool,
         ctx: BlockBuildingContext,
         cancellation_token: CancellationToken,
@@ -71,7 +71,7 @@ where
         sink: Option<Arc<dyn UnfinishedBlockBuildingSink>>,
     ) -> Self {
         Self {
-            provider,
+            provider_factory,
             root_hash_task_pool,
             ctx,
             cancellation_token,
@@ -200,7 +200,7 @@ where
         }
 
         let mut block_building_helper = BlockBuildingHelperFromProvider::new(
-            self.provider.clone(),
+            self.provider_factory.clone(),
             self.root_hash_task_pool.clone(),
             self.root_hash_config.clone(),
             ctx,

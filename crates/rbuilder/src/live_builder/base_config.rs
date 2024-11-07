@@ -5,7 +5,7 @@ use crate::{
     live_builder::{order_input::OrderInputConfig, LiveBuilder},
     roothash::RootHashConfig,
     telemetry::{setup_reloadable_tracing_subscriber, LoggerConfig},
-    utils::{http_provider, BoxedProvider, ProviderFactoryReopener, Signer},
+    utils::{http_provider, BoxedProvider, ProviderFactoryReopener, Signer, ProviderFactoryUnchecked},
 };
 use ahash::HashSet;
 use alloy_primitives::{Address, B256};
@@ -215,9 +215,14 @@ impl BaseConfig {
     ) -> eyre::Result<super::LiveBuilder<P, DB, SlotSourceType>>
     where
         DB: Database + Clone + 'static,
-        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone,
+        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ProviderFactoryUnchecked<DB> + Clone + 'static,
         SlotSourceType: SlotSource,
     {
+        let l2_info = Layer2Info::<P, DB>::new(
+            gwyneth_chain_ids.clone(),
+            create_gwyneth_providers::<P, DB>(gwyneth_chain_ids)?
+        ).await?;
+
         Ok(LiveBuilder::<P, DB, SlotSourceType> {
             watchdog_timeout: self.watchdog_timeout(),
             error_storage_path: self.error_storage_path.clone(),
@@ -238,7 +243,7 @@ impl BaseConfig {
             builders: Vec::new(),
 
             run_sparse_trie_prefetcher: self.root_hash_use_sparse_trie,
-            layer2_info: Layer2Info::<Arc<DatabaseEnv>>::new(gwyneth_chain_ids.clone(), create_gwyneth_providers(gwyneth_chain_ids)?).await?,
+            layer2_info: l2_info,
         })
     }
 

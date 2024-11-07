@@ -69,7 +69,7 @@ impl<P> OrderSimulationPool<P>
 where
     P: StateProviderFactory + Clone + 'static,
 {
-    pub fn new(provider_factory: HashMap<u64, provider: P>, num_workers: usize, global_cancellation: CancellationToken) -> Self {
+    pub fn new(provider_factory: HashMap<u64, P>, num_workers: usize, global_cancellation: CancellationToken) -> Self {
         let mut result = Self {
             provider_factory,
             running_tasks: Arc::new(Mutex::new(Vec::new())),

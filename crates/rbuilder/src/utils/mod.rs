@@ -17,6 +17,7 @@ use alloy_network::Ethereum;
 use alloy_primitives::{Address, Sign, I256, U256};
 use alloy_provider::RootProvider;
 use alloy_transport::BoxTransport;
+pub use provider_factory_reopen::ProviderFactoryUnchecked;
 
 use crate::primitives::serialize::{RawTx, TxEncoding};
 use crate::primitives::TransactionSignedEcRecoveredWithBlobs;

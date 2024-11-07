@@ -52,7 +52,7 @@ pub fn run_sim_worker<P>(
 
         println!("Brecht: simming 3");
 
-        let mut provider_factories = HashMap::default();
+        let mut provider_factories: HashMap<u64, P> = HashMap::default();
         for (chain_id, provider_factory) in provider_factory.iter() {
             match provider_factory.check_consistency_and_reopen_if_needed(
                 current_sim_context.block_ctx.chains[chain_id].block_env.number.to(),

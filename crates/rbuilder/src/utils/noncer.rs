@@ -25,9 +25,9 @@ impl<P> NonceCache<P>
 where
     P: StateProviderFactory,
 {
-    pub fn new(provider_factory: HashMap<u64, P>, block: B256) -> Self {
+    pub fn new(provider_factory: HashMap<u64, P>, block: HashMap<u64, B256>) -> Self {
         Self {
-            provider,
+            provider_factory,
             cache: Arc::new(Mutex::new(HashMap::default())),
             block,
         }

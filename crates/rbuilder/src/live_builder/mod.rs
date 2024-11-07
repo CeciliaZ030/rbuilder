@@ -20,7 +20,7 @@ use crate::{
         watchdog::spawn_watchdog_thread,
     },
     telemetry::inc_active_slots,
-    utils::{error_storage::spawn_error_storage_writer, Signer},
+    utils::{error_storage::spawn_error_storage_writer, Signer, ProviderFactoryUnchecked},
 };
 use ahash::{HashMap, HashSet};
 use alloy_chains::{Chain, ChainKind};
@@ -65,7 +65,7 @@ pub trait SlotSource {
 pub struct LiveBuilder<P, DB, BlocksSourceType>
 where
     DB: Database + Clone + 'static,
-    P: StateProviderFactory + Clone,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ProviderFactoryUnchecked<DB> + Clone + 'static,
     BlocksSourceType: SlotSource,
 {
     pub watchdog_timeout: Duration,
@@ -76,7 +76,7 @@ where
     pub run_sparse_trie_prefetcher: bool,
 
     pub chain_chain_spec: Arc<ChainSpec>,
-    pub provider: P,
+    pub provider_factory: P,
 
     pub coinbase_signer: Signer,
     pub extra_data: Vec<u8>,
@@ -87,13 +87,13 @@ where
     pub sink_factory: Box<dyn UnfinishedBlockBuildingSinkFactory>,
     pub builders: Vec<Arc<dyn BlockBuildingAlgorithm<P, DB>>>,
     pub extra_rpc: RpcModule<()>,
-    pub layer2_info: Layer2Info<DB>,
+    pub layer2_info: Layer2Info<P, DB>,
 }
 
 impl<P, DB, BlocksSourceType: SlotSource> LiveBuilder<P, DB, BlocksSourceType>
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ProviderFactoryUnchecked<DB> + Clone + 'static,
     BlocksSourceType: SlotSource,
 {
     pub fn with_extra_rpc(self, extra_rpc: RpcModule<()>) -> Self {
@@ -124,7 +124,7 @@ where
         let orderpool_subscriber = {
             let (handle, sub) = start_orderpool_jobs(
                 self.order_input_config,
-                self.provider.clone(),
+                self.provider_factory.clone(),
                 self.extra_rpc,
                 self.global_cancellation.clone(),
             )
@@ -134,7 +134,7 @@ where
         };
         orderpool_subscribers.insert(self.chain_chain_spec.chain.id(), orderpool_subscriber);
 
-        let mut provider_factories: HashMap<u64, ProviderFactoryReopener<DB>> = HashMap::default();
+        let mut provider_factories: HashMap<u64, P> = HashMap::default();
         provider_factories.insert(self.chain_chain_spec.chain.id(), self.provider_factory.clone());
 
         for (chain_id, node) in self.layer2_info.nodes.iter() {
