@@ -8,7 +8,7 @@ use crate::{
         BlockBuildingContext,
     },
     live_builder::{payload_events::MevBoostSlotData, simulation::SlotOrderSimResults},
-    roothash::run_trie_prefetcher, utils::ProviderFactoryReopener,
+    roothash::run_trie_prefetcher, utils::{ProviderFactoryReopener, provider_factory_reopen::ConsistencyReopener, ProviderFactoryUnchecked},
 };
 use ahash::HashMap;
 use reth_db::Database;
@@ -32,7 +32,7 @@ pub struct BlockBuildingPool<P, DB> {
     builders: Vec<Arc<dyn BlockBuildingAlgorithm<P, DB>>>,
     sink_factory: Box<dyn UnfinishedBlockBuildingSinkFactory>,
     orderpool_subscribers: HashMap<u64, order_input::OrderPoolSubscriber>,
-    order_simulation_pool: OrderSimulationPool<P>,
+    order_simulation_pool: OrderSimulationPool<P, DB>,
     run_sparse_trie_prefetcher: bool,
     phantom: PhantomData<DB>,
 }
@@ -40,14 +40,14 @@ pub struct BlockBuildingPool<P, DB> {
 impl<P, DB> BlockBuildingPool<P, DB>
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + ConsistencyReopener<DB> + ProviderFactoryUnchecked<DB> + Clone + 'static,
 {
     pub fn new(
         provider_factory: HashMap<u64, P>,
         builders: Vec<Arc<dyn BlockBuildingAlgorithm<P, DB>>>,
         sink_factory: Box<dyn UnfinishedBlockBuildingSinkFactory>,
         orderpool_subscribers: HashMap<u64, order_input::OrderPoolSubscriber>,
-        order_simulation_pool: OrderSimulationPool<P>,
+        order_simulation_pool: OrderSimulationPool<P, DB>,
         run_sparse_trie_prefetcher: bool,
     ) -> Self {
         BlockBuildingPool {

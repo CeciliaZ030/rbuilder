@@ -4,7 +4,7 @@ use eyre::Result;
 use itertools::Itertools;
 use rand::{seq::SliceRandom, SeedableRng};
 use reth::providers::StateProvider;
-use reth_payload_builder::database::SyncCachedReads as CachedReads;
+use reth_payload_builder::database::{SyncCachedReads, CachedReads, to_sync_cached_reads};
 use reth_provider::StateProviderFactory;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
@@ -20,7 +20,7 @@ use crate::primitives::{OrderId, SimulatedOrder};
 /// Context for resolving conflicts in merging tasks.
 #[derive(Debug)]
 pub struct ResolverContext<P> {
-    pub provider: P,
+    pub providers: HashMap<u64, P>,
     pub ctx: BlockBuildingContext,
     pub cancellation_token: CancellationToken,
     pub cache: Option<CachedReads>,
@@ -41,14 +41,14 @@ where
     /// * `cache` - Optional cached reads for optimization.
     /// * `simulation_cache` - Shared cache for simulation results.
     pub fn new(
-        provider: P,
+        providers: HashMap<u64, P>,  // Changed parameter type
         ctx: BlockBuildingContext,
         cancellation_token: CancellationToken,
         cache: Option<CachedReads>,
         simulation_cache: Arc<SharedSimulationCache>,
     ) -> Self {
         ResolverContext {
-            provider,
+            providers,
             ctx,
             cancellation_token,
             cache,
@@ -71,33 +71,52 @@ where
             task.group.id,
             task.algorithm
         );
-        let state_provider = self
-            .provider
-            .history_by_block_hash(self.ctx.attributes.parent)?;
-        let state_provider: Arc<dyn StateProvider> = Arc::from(state_provider);
-
-        let sequence_to_try = generate_sequences_of_orders_to_try(&task);
-
+    
+        // Create a vector of the necessary data from chains to avoid borrowing issues
+        let chain_data: Vec<_> = self.ctx.chains
+            .iter()
+            .map(|(chain_id, chain_context)| {
+                (*chain_id, chain_context.attributes.parent)
+            })
+            .collect();
+    
         let mut best_resolution_result = ResolutionResult {
             total_profit: U256::ZERO,
             sequence_of_orders: vec![],
         };
-
-        for sequence_of_orders in sequence_to_try {
-            let (resolution_result, state) =
-                self.process_sequence_of_orders(sequence_of_orders, &task, &state_provider)?;
-            self.update_best_result(resolution_result, &mut best_resolution_result);
-
-            let (new_cached_reads, _, _) = state.into_parts();
-            self.cache = Some(new_cached_reads);
+    
+        // Process each chain using the collected data
+        for (chain_id, parent_hash) in chain_data {
+            trace!("Processing chain: {}", chain_id);
+            
+            // Get the provider for this chain
+            let provider = self.providers.get(&chain_id)
+                .ok_or_else(|| eyre::eyre!("No provider found for chain {}", chain_id))?;
+            
+            let state_provider = provider
+                .history_by_block_hash(parent_hash)?;
+            let state_provider: Arc<dyn StateProvider> = Arc::from(state_provider);
+            
+            let sequence_to_try = generate_sequences_of_orders_to_try(&task);
+            
+            for sequence_of_orders in sequence_to_try {
+                let (resolution_result, state) =
+                    self.process_sequence_of_orders(sequence_of_orders.clone(), &task, &state_provider)?;
+                
+                self.update_best_result(resolution_result, &mut best_resolution_result);
+                
+                let (new_cached_reads, ..) = state.into_parts();
+                self.cache = Some(CachedReads::from(new_cached_reads));
+            }
         }
-
+    
         trace!(
             "Resolved conflict task {:?} with profit: {:?} and algorithm: {:?}",
             task.group.id,
             best_resolution_result.total_profit,
             task.algorithm
         );
+        
         Ok(best_resolution_result)
     }
 
@@ -286,18 +305,38 @@ where
         cached_state_option: &Option<Arc<CachedSimulationState>>,
         state_provider: &Arc<dyn StateProvider>,
     ) -> BlockState {
-        if let Some(cached_state) = &cached_state_option {
-            // Use cached state
-            BlockState::new_arc(state_provider.clone())
-                .with_cached_reads(cached_state.cached_reads.clone())
-                .with_bundle_state(cached_state.bundle_state.clone())
-        } else {
-            // If we don't have a cached state from the simulation cache, we use the cached reads from the block state in some cases
-            if let Some(cache) = &self.cache {
-                BlockState::new_arc(state_provider.clone()).with_cached_reads(cache.clone())
-            } else {
-                BlockState::new_arc(state_provider.clone())
+        let mut state_providers: HashMap<u64, Arc<dyn StateProvider>> = HashMap::default();
+    
+        // Populate state providers for each chain
+        for (chain_id, _) in &self.ctx.chains {
+            state_providers.insert(*chain_id, state_provider.clone());
+        }
+    
+        let block_state = BlockState::new_arc(state_providers);
+    
+        // Apply caching in order of precedence
+        match (cached_state_option, &self.cache) {
+            (Some(cached_state), _) => {
+                // Use the to_sync_cached_reads helper
+                let sync_cached_reads = to_sync_cached_reads(
+                    cached_state.cached_reads.clone(),
+                    self.ctx.parent_chain_id,  // or appropriate chain_id
+                );
+                
+                block_state
+                    .with_cached_reads(sync_cached_reads)
+                    .with_bundle_state(cached_state.bundle_state.clone())
             }
+            (None, Some(cache)) => {
+                // Convert CachedReads to SyncCachedReads
+                let sync_cached_reads = to_sync_cached_reads(
+                    cache.clone(),
+                    self.ctx.parent_chain_id,  // or appropriate chain_id
+                );
+                
+                block_state.with_cached_reads(sync_cached_reads)
+            }
+            (None, None) => block_state,
         }
     }
 
@@ -311,7 +350,7 @@ where
     ) {
         let (cached_reads, bundle_state, _) = state.clone().into_parts();
         let cached_simulation_state = CachedSimulationState {
-            cached_reads,
+            cached_reads: CachedReads::from(cached_reads),
             bundle_state,
             total_profit,
             per_order_profits: per_order_profits.to_owned(),

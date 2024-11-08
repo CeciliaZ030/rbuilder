@@ -269,7 +269,7 @@ where
         orders_closed_at: OffsetDateTime,
     ) -> eyre::Result<Box<dyn BlockBuildingHelper>> {
         let mut block_building_helper = BlockBuildingHelperFromProvider::new(
-            self.provider.clone(),
+            self.provider_factory.clone(),
             self.root_hash_task_pool.clone(),
             self.root_hash_config.clone(), // Adjust as needed for backtest
             self.ctx.clone(),

@@ -233,13 +233,13 @@ pub trait UnfinishedBlockBuildingSinkFactory: Debug + Send + Sync {
     ) -> Arc<dyn UnfinishedBlockBuildingSink>;
 }
 
-/// Basic configuration to run a single block building with a BlockBuildingAlgorithm
+/// Basic configuration to run a single block building with a BlockBuildingAlgorithmpub 
 pub struct BacktestSimulateBlockInput<'a, P> {
     pub ctx: BlockBuildingContext,
     pub builder_name: String,
     pub sbundle_mergeabe_signers: Vec<Address>,
     pub sim_orders: &'a Vec<SimulatedOrder>,
-    pub provider_factory: P,
+    pub provider_factory: HashMap<u64, P>,
     pub cached_reads: Option<CachedReads>,
 }
 

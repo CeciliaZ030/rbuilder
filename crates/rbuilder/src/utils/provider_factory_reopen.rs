@@ -2,7 +2,7 @@ use crate::telemetry::{inc_provider_bad_reopen_counter, inc_provider_reopen_coun
 use alloy_eips::{BlockNumHash, BlockNumberOrTag};
 use reth::providers::{BlockHashReader, ChainSpecProvider, ProviderFactory};
 use reth_chainspec::{ChainInfo, ChainSpec};
-use reth_db::{database::Database, DatabaseError};
+use reth_db::{database::Database, DatabaseError, DatabaseEnv};
 use reth_errors::{ProviderError, ProviderResult, RethResult};
 use reth_primitives::{BlockHash, BlockNumber, Header, SealedHeader};
 use reth_provider::{
@@ -31,6 +31,18 @@ pub struct ProviderFactoryReopener<DB> {
     last_consistent_block: Arc<RwLock<Option<BlockNumber>>>,
     /// Patch to disable checking on test mode. Is ugly but ProviderFactoryReopener should die shortly (5/24/2024).
     testing_mode: bool,
+}
+
+pub trait ConsistencyReopener<DB> {
+    fn check_consistency_and_reopen_if_needed(&self, block_number: u64) -> eyre::Result<ProviderFactory<DB>>;
+}
+
+// Implement for ProviderFactoryReopener
+impl<DB: Database + Clone> ConsistencyReopener<DB> for ProviderFactoryReopener<DB> {
+    fn check_consistency_and_reopen_if_needed(&self, block_number: u64) -> eyre::Result<ProviderFactory<DB>> {
+        // Call the existing implementation and just return Ok(()) since we don't need the provider
+        return Ok(self.check_consistency_and_reopen_if_needed()?);
+    }
 }
 
 // Needed due to the generalized 'P' instead of 'ProviderFactoryReopener<DB>

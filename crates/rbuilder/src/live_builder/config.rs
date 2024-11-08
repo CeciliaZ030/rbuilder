@@ -33,7 +33,7 @@ use crate::{
     mev_boost::BLSBlockSigner,
     primitives::mev_boost::{MevBoostRelay, RelayConfig},
     roothash::RootHashConfig,
-    utils::{build_info::rbuilder_version, ProviderFactoryReopener, Signer, ProviderFactoryUnchecked},
+    utils::{build_info::rbuilder_version, ProviderFactoryReopener, Signer, ProviderFactoryUnchecked, provider_factory_reopen::ConsistencyReopener},
     validation_api_client::ValidationAPIClient,
 };
 use alloy_chains::ChainKind;
@@ -297,7 +297,7 @@ impl LiveBuilderConfig for Config {
     ) -> eyre::Result<super::LiveBuilder<P, DB, MevBoostSlotDataGenerator>>
     where
         DB: Database + Clone + 'static,
-        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ProviderFactoryUnchecked<DB> + Clone + 'static,
+        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ProviderFactoryUnchecked<DB> + ConsistencyReopener<DB> + Clone + 'static,
     {
         let (sink_sealed_factory, relays) = self.l1_config.create_relays_sealed_sink_factory(
             self.base_config.chain_spec()?,
@@ -486,7 +486,7 @@ pub fn create_builders<P, DB>(
 ) -> Vec<Arc<dyn BlockBuildingAlgorithm<P, DB>>>
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + ProviderFactoryUnchecked<DB> + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + ProviderFactoryUnchecked<DB> + ConsistencyReopener<DB> + Clone + 'static,
 {
     configs
         .into_iter()
@@ -509,7 +509,7 @@ fn create_builder<P, DB>(
 ) -> Arc<dyn BlockBuildingAlgorithm<P, DB>>
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + ProviderFactoryUnchecked<DB> + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + ProviderFactoryUnchecked<DB> + ConsistencyReopener<DB> + Clone + 'static,
 {
     match cfg.builder {
         SpecificBuilderConfig::OrderingBuilder(order_cfg) => {

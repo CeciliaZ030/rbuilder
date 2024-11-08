@@ -121,12 +121,17 @@ where
             .builders
             .iter()
             .filter_map(|builder_name: &String| {
+                // HashMap with a provider factory
+                let mut providers = HashMap::default();
+                // Use ctx.parent_chain_id as the key - one is OK for testing
+                providers.insert(ctx.parent_chain_id, provider_factory.clone());
+    
                 let input = BacktestSimulateBlockInput {
                     ctx: ctx.clone(),
                     builder_name: builder_name.clone(),
                     sbundle_mergeabe_signers: sbundle_mergeabe_signers.clone(),
                     sim_orders: &sim_orders,
-                    provider_factory: provider_factory.clone(),
+                    provider_factory: providers,
                     cached_reads: None,
                 };
                 let build_res = config.build_backtest_block(builder_name, input);

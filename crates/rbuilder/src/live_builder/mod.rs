@@ -20,7 +20,7 @@ use crate::{
         watchdog::spawn_watchdog_thread,
     },
     telemetry::inc_active_slots,
-    utils::{error_storage::spawn_error_storage_writer, Signer, ProviderFactoryUnchecked},
+    utils::{error_storage::spawn_error_storage_writer, Signer, ProviderFactoryUnchecked, provider_factory_reopen::ConsistencyReopener},
 };
 use ahash::{HashMap, HashSet};
 use alloy_chains::{Chain, ChainKind};
@@ -65,7 +65,7 @@ pub trait SlotSource {
 pub struct LiveBuilder<P, DB, BlocksSourceType>
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ProviderFactoryUnchecked<DB> + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ProviderFactoryUnchecked<DB> + ConsistencyReopener<DB> + Clone + 'static,
     BlocksSourceType: SlotSource,
 {
     pub watchdog_timeout: Duration,
@@ -93,7 +93,7 @@ where
 impl<P, DB, BlocksSourceType: SlotSource> LiveBuilder<P, DB, BlocksSourceType>
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ProviderFactoryUnchecked<DB> + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ProviderFactoryUnchecked<DB> + ConsistencyReopener<DB> + Clone + 'static,
     BlocksSourceType: SlotSource,
 {
     pub fn with_extra_rpc(self, extra_rpc: RpcModule<()>) -> Self {

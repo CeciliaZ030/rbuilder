@@ -5,7 +5,7 @@ use crate::{
         redistribute::{calc_redistributions, RedistributionBlockOutput},
         BlockData, HistoricalDataStorage,
     },
-    live_builder::{base_config::load_config_toml_and_env, cli::LiveBuilderConfig},
+    live_builder::{base_config::load_config_toml_and_env, cli::LiveBuilderConfig}, utils::provider_factory_reopen::ConsistencyReopener,
 };
 use alloy_primitives::utils::format_ether;
 use clap::Parser;
@@ -117,7 +117,7 @@ fn process_redisribution<P, DB, ConfigType>(
 ) -> eyre::Result<()>
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ConsistencyReopener<DB> + Clone + 'static,
     ConfigType: LiveBuilderConfig,
 {
     let block_number = block_data.block_number;

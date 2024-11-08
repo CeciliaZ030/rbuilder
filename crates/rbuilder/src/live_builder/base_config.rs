@@ -5,7 +5,7 @@ use crate::{
     live_builder::{order_input::OrderInputConfig, LiveBuilder},
     roothash::RootHashConfig,
     telemetry::{setup_reloadable_tracing_subscriber, LoggerConfig},
-    utils::{http_provider, BoxedProvider, ProviderFactoryReopener, Signer, ProviderFactoryUnchecked},
+    utils::{http_provider, BoxedProvider, ProviderFactoryReopener, Signer, ProviderFactoryUnchecked, provider_factory_reopen::ConsistencyReopener},
 };
 use ahash::HashSet;
 use alloy_primitives::{Address, B256};
@@ -215,12 +215,12 @@ impl BaseConfig {
     ) -> eyre::Result<super::LiveBuilder<P, DB, SlotSourceType>>
     where
         DB: Database + Clone + 'static,
-        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ProviderFactoryUnchecked<DB> + Clone + 'static,
+        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ProviderFactoryUnchecked<DB> + ConsistencyReopener<DB> + Clone + 'static,
         SlotSourceType: SlotSource,
     {
         let l2_info = Layer2Info::<P, DB>::new(
             gwyneth_chain_ids.clone(),
-            create_gwyneth_providers::<P, DB>(gwyneth_chain_ids)?
+            provider_factory.clone(),
         ).await?;
 
         Ok(LiveBuilder::<P, DB, SlotSourceType> {

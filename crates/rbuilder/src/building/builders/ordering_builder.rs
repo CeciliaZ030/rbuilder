@@ -154,10 +154,21 @@ where
     let mut ctxs = HashMap::default();
     ctxs.insert(input.ctx.parent_chain_id, input.ctx.clone());
     let use_suggested_fee_recipient_as_coinbase = ordering_config.coinbase_payment;
-    let state_provider = input
-        .provider_factory
-            .history_by_block_number(input.ctx.chains[&input.ctx.parent_chain_id].block_env.number.to::<u64>() - 1)?;
 
+    // Get the provider factory for parent chain first
+    let provider_factory = input.provider_factory.get(&input.ctx.parent_chain_id)
+        .ok_or_else(|| eyre::eyre!("No provider factory found for parent chain {}", input.ctx.parent_chain_id))?;
+
+    let state_provider = provider_factory
+        .history_by_block_number(input.ctx.chains[&input.ctx.parent_chain_id].block_env.number.to::<u64>() - 1)?;
+
+    let mut state_for_sim: HashMap<u64, Arc<dyn StateProvider>> = HashMap::default();
+
+    // Iterate through chains and set up state providers
+    for (chain_id, provider) in input.provider_factory.iter() {
+        let state = provider.history_by_block_hash(input.ctx.chains[chain_id].attributes.parent)?;
+        state_for_sim.insert(*chain_id, Arc::from(state));
+    }
     todo!()
 
     // let mut state_for_sim: HashMap<u64, Arc<dyn StateProvider>> = HashMap::default();
@@ -401,7 +412,7 @@ impl OrderingBuildingAlgorithm {
 impl<P, DB> BlockBuildingAlgorithm<P, DB> for OrderingBuildingAlgorithm
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + ProviderFactoryUnchecked<DB> + Clone + 'static,
 {
     fn name(&self) -> String {
         self.name.clone()

@@ -24,6 +24,7 @@ pub fn create_gwyneth_providers<P, DB>(chain_ids: Vec<u64>) -> eyre::Result<Hash
 where
     DB: Database + Clone + 'static,
     P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+    P: From<ProviderFactoryReopener<Arc<DatabaseEnv>>>,
 {
     let datadir_base = "/data/reth/gwyneth";
     let chain = chain_value_parser("/network-configs/genesis.json").expect("failed to load gwyneth chain spec");
@@ -36,7 +37,7 @@ where
             Some(Path::new(&format!("{}-{}/static_files", datadir_base, chain_id).to_owned())),
             chain.clone(),
         )?;
-        nodes.insert(chain_id, provider_factory);
+        nodes.insert(chain_id, provider_factory.into());
     }
 
     Ok(nodes)
@@ -71,38 +72,29 @@ where
     P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
 {
     pub async fn new(
-        chain_ids: Vec<u64>, 
-        provider_factories: HashMap<u64, P>
-    ) -> Result<Self> 
-    {
+        chain_ids: Vec<u64>,
+        provider_factory: P,
+    ) -> Result<Self> {
         let mut providers = HashMap::default();
         let mut data_dirs_map = HashMap::default();
-
+    
         let datadir_base = "/data/reth/gwyneth";
         let ipc_base: &str = "/tmp/reth.ipc";
-
+    
         let chain = chain_value_parser("/network-configs/genesis.json").expect("failed to load gwyneth chain spec");
-
+    
         let mut nodes = HashMap::default();
         for chain_id in chain_ids {
             let ipc_path = format!("{}-{}", ipc_base, chain_id).to_owned();
             let data_dir = format!("{}-{}", datadir_base, chain_id).to_owned();
-
+    
             let ipc = IpcConnect::new(ipc_path.clone());
             let provider = ProviderBuilder::new().on_ipc(ipc).await?;
-            //let chain_id = U256::from(provider.get_chain_id().await?);
             providers.insert(chain_id, (provider, ipc_path));
             data_dirs_map.insert(chain_id, PathBuf::from(data_dir));
-
-            // let provider_factory = create_provider_factory(
-            //     Some(Path::new(&format!("{}-{}", datadir_base, chain_id).to_owned())),
-            //     Some(Path::new(&format!("{}-{}/db", datadir_base, chain_id).to_owned())),
-            //     Some(Path::new(&format!("{}-{}/static_files", datadir_base, chain_id).to_owned())),
-            //     chain.clone(),
-            // )?;
-
+    
             nodes.insert(chain_id, GwynethNode::<P, DB> {
-                provider_factory: provider_factories[&chain_id].clone(),
+                provider_factory: provider_factory.clone(),
                 order_input_config: OrderInputConfig::new(
                     true,
                     false,
@@ -113,10 +105,10 @@ where
                     Duration::from_millis(50),
                     10_000,
                 ),
-                _phantom: PhantomData,  // Initialize the phantom
+                _phantom: PhantomData,
             });
         }
-
+    
         Ok(Self {
             ipc_providers: Arc::new(Mutex::new(providers)),
             data_dirs: data_dirs_map,

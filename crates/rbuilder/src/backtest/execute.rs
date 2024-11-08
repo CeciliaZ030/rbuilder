@@ -6,7 +6,7 @@ use crate::{
     },
     live_builder::cli::LiveBuilderConfig,
     primitives::{OrderId, SimulatedOrder},
-    utils::{clean_extradata, Signer},
+    utils::{clean_extradata, Signer, provider_factory_reopen::ConsistencyReopener},
 };
 use ahash::{HashMap, HashSet};
 use alloy_primitives::{Address, U256};
@@ -55,7 +55,7 @@ pub struct BacktestBlockInput {
     pub sim_errors: Vec<OrderErr>,
 }
 
-pub fn backtest_prepare_ctx_for_block<P>(
+pub fn backtest_prepare_ctx_for_block<P, DB>(
     block_data: BlockData,
     provider_factory: P,
     chain_spec: Arc<ChainSpec>,
@@ -64,7 +64,7 @@ pub fn backtest_prepare_ctx_for_block<P>(
     builder_signer: Signer,
 ) -> eyre::Result<BacktestBlockInput>
 where
-    P: StateProviderFactory + Clone + 'static,
+    P: StateProviderFactory + ConsistencyReopener<DB> + Clone + 'static,
 {
     let orders = block_data
         .available_orders
@@ -101,7 +101,7 @@ where
 #[allow(clippy::too_many_arguments)]
 pub fn backtest_simulate_block<P, DB, ConfigType>(
     block_data: BlockData,
-    provider_factory: P,
+    provider_factory: P,  // Keep this as is for now
     chain_spec: Arc<ChainSpec>,
     build_block_lag_ms: i64,
     builders_names: Vec<String>,
@@ -111,7 +111,7 @@ pub fn backtest_simulate_block<P, DB, ConfigType>(
 ) -> eyre::Result<BlockBacktestValue>
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ConsistencyReopener<DB> + Clone + 'static,
     ConfigType: LiveBuilderConfig,
 {
     let BacktestBlockInput {
@@ -161,12 +161,16 @@ where
 
     let mut cached_reads = Some(CachedReads::default());
     for building_algorithm_name in builders_names {
+        // Create HashMap for the provider
+        let mut providers = HashMap::default();
+        providers.insert(chain_spec.chain.id(), provider_factory.clone());
+
         let input = BacktestSimulateBlockInput {
             ctx: ctx.clone(),
             builder_name: building_algorithm_name.clone(),
             sbundle_mergeabe_signers: sbundle_mergeabe_signers.to_vec(),
             sim_orders: &sim_orders,
-            provider_factory: provider_factory.clone(),
+            provider_factory: providers,  // Pass the HashMap here
             cached_reads,
         };
 

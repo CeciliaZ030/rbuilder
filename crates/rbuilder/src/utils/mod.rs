@@ -4,7 +4,7 @@ pub mod constants;
 pub mod error_storage;
 pub mod fmt;
 mod noncer;
-mod provider_factory_reopen;
+pub(crate) mod provider_factory_reopen;
 pub mod reconnect;
 mod test_data_generator;
 mod tx_signer;

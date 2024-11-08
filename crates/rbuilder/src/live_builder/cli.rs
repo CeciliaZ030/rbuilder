@@ -15,7 +15,7 @@ use crate::{
         base_config::load_config_toml_and_env, payload_events::MevBoostSlotDataGenerator,
     },
     telemetry,
-    utils::{build_info::Version, ProviderFactoryUnchecked},
+    utils::{build_info::Version, ProviderFactoryUnchecked, provider_factory_reopen::ConsistencyReopener},
 };
 
 use super::{base_config::BaseConfig, LiveBuilder};
@@ -53,7 +53,7 @@ pub trait LiveBuilderConfig: Debug + DeserializeOwned + Sync {
            + Send
     where
         DB: Database + Clone + 'static,
-        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ProviderFactoryUnchecked<DB> + Clone + 'static;
+        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ProviderFactoryUnchecked<DB> + ConsistencyReopener<DB> + Clone + 'static;
 
     /// Patch until we have a unified way of backtesting using the exact algorithms we use on the LiveBuilder.
     /// building_algorithm_name will come from the specific configuration.
@@ -64,7 +64,7 @@ pub trait LiveBuilderConfig: Debug + DeserializeOwned + Sync {
     ) -> eyre::Result<(Block, CachedReads)>
     where
         DB: Database + Clone + 'static,
-        P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static;
+        P: DatabaseProviderFactory<DB> + StateProviderFactory + ConsistencyReopener<DB> + Clone + 'static;
 }
 
 /// print_version_info func that will be called on command Cli::Version

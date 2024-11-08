@@ -301,7 +301,7 @@ where
         group_result_sender,
         CancellationToken::new(),
         input.ctx.clone(),
-        input.provider.clone(),
+        input.provider_factory.clone(),
         Arc::clone(&simulation_cache),
     );
 
@@ -313,7 +313,7 @@ where
     let results = conflict_resolving_pool.process_groups_backtest(
         groups,
         &input.ctx,
-        &input.provider,
+        &input.provider_factory,
         Arc::clone(&simulation_cache),
     );
     let processing_duration = processing_start.elapsed();
@@ -324,7 +324,7 @@ where
         &config,
         RootHashConfig::skip_root_hash(),
         Arc::clone(&best_results),
-        input.provider.clone(),
+        input.provider_factory.clone(),
         BlockingTaskPool::build()?,
         input.ctx.clone(),
         CancellationToken::new(),
@@ -411,7 +411,7 @@ where
 
     fn build_blocks(&self, input: BlockBuildingAlgorithmInput<P>) {
         let live_input = LiveBuilderInput {
-            provider: input.provider,
+            provider_factory: input.provider_factory,
             root_hash_config: self.root_hash_config.clone(),
             root_hash_task_pool: self.root_hash_task_pool.clone(),
             ctx: input.ctx.clone(),
