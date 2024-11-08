@@ -87,7 +87,7 @@ async fn main() -> eyre::Result<()> {
             DEFAULT_INPUT_CHANNEL_BUFFER_SIZE,
         ),
         chain_chain_spec: chain_spec.clone(),
-        provider: create_provider_factory(
+        provider_factory: create_provider_factory(
             Some(&RETH_DB_PATH.parse::<PathBuf>().unwrap()),
             None,
             None,
@@ -101,7 +101,12 @@ async fn main() -> eyre::Result<()> {
         sink_factory: Box::new(TraceBlockSinkFactory {}),
         builders: vec![Arc::new(DummyBuildingAlgorithm::new(10))],
         run_sparse_trie_prefetcher: false,
-        layer2_info: Layer2Info::new(vec![], HashMap::default()).await?,
+        layer2_info: Layer2Info::new(vec![], create_provider_factory(
+            Some(&RETH_DB_PATH.parse::<PathBuf>().unwrap()),
+            None,
+            None,
+            chain_spec.clone(),
+        )?).await?,
     };
 
     let ctrlc = tokio::spawn(async move {
@@ -236,7 +241,7 @@ where
     fn build_blocks(&self, input: BlockBuildingAlgorithmInput<P>) {
         if let Some(orders) = self.wait_for_orders(&input.cancel, input.input) {
             let block = self
-                .build_block(orders, input.provider, &input.ctx)
+                .build_block(orders, input.provider_factory, &input.ctx)
                 .unwrap();
             input.sink.new_block(block);
         }
