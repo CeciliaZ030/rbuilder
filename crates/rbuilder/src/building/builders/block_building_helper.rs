@@ -16,11 +16,10 @@ use revm_primitives::ChainAddress;
 use time::OffsetDateTime;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, trace};
-use reth::primitives::{Header, Block as RethBlock};
 
 use crate::{
     building::{
-        estimate_payout_gas_limit, tracers::GasUsedSimulationTracer, BlockBuildingContext,
+        tracers::GasUsedSimulationTracer, BlockBuildingContext,
         BlockState, BuiltBlockTrace, BuiltBlockTraceError, CriticalCommitOrderError,
         EstimatePayoutGasErr, ExecutionError, ExecutionResult, FinalizeError, FinalizeResult,
         PartialBlock, Sorting,

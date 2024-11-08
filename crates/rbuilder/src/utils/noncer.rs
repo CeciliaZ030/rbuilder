@@ -1,5 +1,5 @@
 use ahash::HashMap;
-use alloy_primitives::{Address, B256};
+use alloy_primitives::B256;
 use reth::providers::StateProviderBox;
 use reth_errors::ProviderResult;
 use reth_provider::StateProviderFactory;

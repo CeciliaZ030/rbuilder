@@ -8,7 +8,6 @@ use crate::{
 use ahash::{HashMap, HashSet};
 use alloy_primitives::{B256, I256};
 use eyre::Context;
-use reth::blockchain_tree::chain;
 use reth_chainspec::ChainSpec;
 use reth_primitives::{Receipt, TransactionSignedEcRecovered, TxHash};
 use reth_provider::StateProviderFactory;

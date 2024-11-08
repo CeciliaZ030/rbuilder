@@ -6,7 +6,7 @@ use std::time::Duration;
 use ahash::HashMap;
 use alloy_primitives::U256;
 use alloy_provider::{IpcConnect, ProviderBuilder, Provider, RootProvider};
-use alloy_rpc_types::{Block, BlockNumberOrTag, BlockTransactionsKind};
+use alloy_rpc_types::{Block, BlockTransactionsKind};
 use alloy_eips::BlockId;
 use alloy_pubsub::PubSubFrontend;
 use eyre::Result;

@@ -9,7 +9,7 @@ use crate::{
 };
 use ahash::HashMap;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
-use reth_provider::{StateProvider, DatabaseProviderFactory};
+use reth_provider::StateProvider;
 use revm_primitives::ChainAddress;
 use reth_provider::StateProviderFactory;
 use std::{

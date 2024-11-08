@@ -8,7 +8,6 @@
 use crate::roothash::RootHashConfig;
 use crate::{
     building::{
-        block_orders_from_sim_orders,
         builders::{
             block_building_helper::BlockBuildingHelper, LiveBuilderInput, OrderIntakeConsumer,
         },
@@ -18,7 +17,6 @@ use crate::{
 };
 use ahash::{HashMap, HashSet};
 use alloy_primitives::Address;
-use reth::providers::ProviderFactory;
 use reth_db::database::Database;
 use reth_provider::StateProvider;
 use revm_primitives::ChainAddress;
@@ -31,7 +29,7 @@ use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 use serde::Deserialize;
 use std::{
     marker::PhantomData,
-    {os::unix::fs::lchown, sync::Arc, thread::sleep, time::{Duration, Instant},
+    {sync::Arc, thread::sleep, time::{Duration, Instant},
 }};
 use tracing::{error, info_span, trace};
 

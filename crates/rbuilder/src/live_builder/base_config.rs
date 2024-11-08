@@ -34,7 +34,7 @@ use std::{
 };
 use tracing::warn;
 
-use super::{layer2_info::create_gwyneth_providers, SlotSource};
+use super::SlotSource;
 
 use crate::live_builder::Layer2Info;
 

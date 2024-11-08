@@ -8,12 +8,11 @@ use crate::{
         BlockBuildingContext,
     },
     live_builder::{payload_events::MevBoostSlotData, simulation::SlotOrderSimResults},
-    roothash::run_trie_prefetcher, utils::{ProviderFactoryReopener, provider_factory_reopen::ConsistencyReopener, ProviderFactoryUnchecked},
+    roothash::run_trie_prefetcher, utils::{provider_factory_reopen::ConsistencyReopener, ProviderFactoryUnchecked},
 };
 use ahash::HashMap;
 use reth_db::Database;
 use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
-use reth_provider::ProviderFactory;
 use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, trace};

@@ -2,7 +2,7 @@ use crate::telemetry::{inc_provider_bad_reopen_counter, inc_provider_reopen_coun
 use alloy_eips::{BlockNumHash, BlockNumberOrTag};
 use reth::providers::{BlockHashReader, ChainSpecProvider, ProviderFactory};
 use reth_chainspec::{ChainInfo, ChainSpec};
-use reth_db::{database::Database, DatabaseError, DatabaseEnv};
+use reth_db::{database::Database, DatabaseError};
 use reth_errors::{ProviderError, ProviderResult, RethResult};
 use reth_primitives::{BlockHash, BlockNumber, Header, SealedHeader};
 use reth_provider::{

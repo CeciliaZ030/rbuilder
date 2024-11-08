@@ -16,7 +16,7 @@ use simulation_job::SimulationJob;
 use std::{sync::{Arc, Mutex}, marker::PhantomData};
 use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
-use tracing::{info_span, error, Instrument};
+use tracing::{error, Instrument};
 
 #[derive(Debug)]
 pub struct SlotOrderSimResults {

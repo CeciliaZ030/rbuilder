@@ -4,7 +4,7 @@ use eyre::Result;
 use itertools::Itertools;
 use rand::{seq::SliceRandom, SeedableRng};
 use reth::providers::StateProvider;
-use reth_payload_builder::database::{SyncCachedReads, CachedReads, to_sync_cached_reads};
+use reth_payload_builder::database::{CachedReads, to_sync_cached_reads};
 use reth_provider::StateProviderFactory;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;

@@ -23,7 +23,7 @@ use crate::{
     utils::{error_storage::spawn_error_storage_writer, Signer, ProviderFactoryUnchecked, provider_factory_reopen::ConsistencyReopener},
 };
 use ahash::{HashMap, HashSet};
-use alloy_chains::{Chain, ChainKind};
+use alloy_chains::Chain;
 use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, B256, U256};
 use building::BlockBuildingPool;
@@ -35,12 +35,11 @@ use reth_chainspec::ChainSpec;
 use reth_db::Database;
 use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 use std::fmt::Debug;
-use reth_evm::provider;
 use std::{cmp::min, path::PathBuf, sync::Arc, thread::sleep, time::Duration};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use layer2_info::Layer2Info;
 
