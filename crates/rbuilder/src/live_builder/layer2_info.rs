@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use ahash::HashMap;
 use alloy_primitives::U256;
@@ -16,7 +16,6 @@ use tracing::warn;
 use reth_node_core::args::utils::chain_value_parser;
 
 use crate::utils::ProviderFactoryReopener;
-
 use super::config::create_provider_factory;
 use super::order_input::OrderInputConfig;
 
@@ -45,17 +44,17 @@ where
 
 #[derive(Debug)]
 pub struct GwynethNode<P, DB> {
-    pub provider_factory: P,  // Changed from ProviderFactoryReopener<DB> to P
+    pub provider_factory: P,
     pub order_input_config: OrderInputConfig,
-    _phantom: PhantomData<DB>,  // Added phantom
+    _phantom: PhantomData<DB>,
 }
 
 #[derive(Debug)]
-pub struct Layer2Info<P, DB> {  // Added P generic parameter
-    pub ipc_providers: Arc<Mutex<HashMap<u64, (RootProvider<PubSubFrontend>, String)>>>,
+pub struct Layer2Info<P, DB> {
+    pub ipc_providers: Arc<RwLock<HashMap<u64, (RootProvider<PubSubFrontend>, String)>>>,  // Changed to RwLock
     pub data_dirs: HashMap<u64, PathBuf>,
     pub nodes: HashMap<u64, GwynethNode<P, DB>>,
-    _phantom: PhantomData<DB>,  // Added phantom
+    _phantom: PhantomData<DB>,
 }
 
 impl<P, DB> PartialEq for Layer2Info<P, DB> {
@@ -110,22 +109,53 @@ where
         }
     
         Ok(Self {
-            ipc_providers: Arc::new(Mutex::new(providers)),
+            ipc_providers: Arc::new(RwLock::new(providers)),  // Changed to RwLock
             data_dirs: data_dirs_map,
             nodes,
             _phantom: PhantomData,
         })
     }
 
-    async fn ensure_connection(&self, chain_id: &u64) -> bool {
-        let mut providers = self.ipc_providers.lock().unwrap();
-        if let Some((provider, ipc_path)) = providers.get_mut(chain_id) {
+    pub async fn get_latest_block(&self, chain_id: u64, block_id: BlockId) -> Result<Option<Block>> {
+        if self.ensure_connection(&chain_id).await {
+            // Take a copy of the provider under a shorter lock
+            let provider = {
+                let providers = self.ipc_providers.read().unwrap();
+                providers.get(&chain_id).map(|(p, _)| p.clone())
+            };
+
+            if let Some(provider) = provider {
+                let transactions_kind = BlockTransactionsKind::Full;
+                let latest_block = provider.get_block(block_id, transactions_kind).await?;
+                Ok(latest_block)
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn ensure_connection(&self, chain_id: &u64) -> bool {
+        let provider_and_path = {
+            let providers = self.ipc_providers.read().unwrap();
+            providers.get(chain_id).map(|(p, path)| (p.clone(), path.clone()))
+        };
+
+        if let Some((provider, ipc_path)) = provider_and_path {
             match provider.get_chain_id().await {
                 Ok(_) => true,
                 Err(_) => {
                     warn!("Connection lost for chain_id: {}. Attempting to reconnect...", chain_id);
-                    match self.reconnect( provider, ipc_path).await {
-                        Ok(_) => true,
+                    match self.reconnect(&provider, &ipc_path).await {
+                        Ok(new_provider) => {
+                            // Update the provider with write lock
+                            let mut providers = self.ipc_providers.write().unwrap();
+                            if let Some((existing_provider, _)) = providers.get_mut(chain_id) {
+                                *existing_provider = new_provider;
+                            }
+                            true
+                        }
                         Err(e) => {
                             warn!("Failed to reconnect for chain_id: {}. Error: {:?}", chain_id, e);
                             false
@@ -138,25 +168,15 @@ where
         }
     }
 
-    pub async fn get_latest_block(&self, chain_id: u64, block_id: BlockId) -> Result<Option<Block>> {
-        if self.ensure_connection(&chain_id).await {
-            let providers = self.ipc_providers.lock().unwrap();
-            if let Some((provider, _)) = providers.get(&chain_id) {
-                let transactions_kind = BlockTransactionsKind::Full;
-                let latest_block = provider.get_block(block_id, transactions_kind).await?;
-                Ok(latest_block)
-            } else {
-                Ok(None)
-            }
-        } else {
-            Ok(None)
-        }
-    }
-
     pub async fn get_chain_id(&self, chain_id: &u64) -> Result<Option<U256>> {
         if self.ensure_connection(chain_id).await {
-            let providers = self.ipc_providers.lock().unwrap();
-            if let Some((provider, _)) = providers.get(chain_id) {
+            // Take a copy of the provider under a shorter lock
+            let provider = {
+                let providers = self.ipc_providers.read().unwrap();
+                providers.get(chain_id).map(|(p, _)| p.clone())
+            };
+
+            if let Some(provider) = provider {
                 let chain_id = U256::from(provider.get_chain_id().await?);
                 Ok(Some(chain_id))
             } else {
@@ -171,9 +191,9 @@ where
         self.data_dirs.get(chain_id)
     }
 
-    async fn reconnect(&self, provider: &mut RootProvider<PubSubFrontend>, ipc_path: &str) -> Result<()> {
+    async fn reconnect(&self, provider: &RootProvider<PubSubFrontend>, ipc_path: &str) -> Result<RootProvider<PubSubFrontend>> {
         let ipc = IpcConnect::new(ipc_path.to_string());
-        *provider = ProviderBuilder::new().on_ipc(ipc).await?;
-        Ok(())
+        let new_provider = ProviderBuilder::new().on_ipc(ipc).await?;
+        Ok(new_provider)
     }
 }
