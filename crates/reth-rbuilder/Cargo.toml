@@ -5,12 +5,14 @@ edition.workspace = true
 
 [dependencies]
 rbuilder = { path = "../rbuilder" }
+gwyneth = { path = "../../../reth/crates/gwyneth" }
 
 reth.workspace = true
 reth-node-builder.workspace = true
 reth-node-ethereum.workspace = true
 reth-provider.workspace = true
 reth-cli-util.workspace = true
+reth-cli-commands.workspace = true
 reth-db-api.workspace = true
 reth-db.workspace = true
 reth-db-common.workspace = true
@@ -19,6 +21,7 @@ tokio.workspace = true
 clap.workspace = true
 eyre.workspace = true
 tracing.workspace = true
+serde_json = "1.0.105"
 
 [target.'cfg(unix)'.dependencies]
 tikv-jemallocator = { workspace = true, optional = true }
