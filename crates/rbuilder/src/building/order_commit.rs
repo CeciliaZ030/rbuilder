@@ -409,9 +409,6 @@ impl<'a, 'b, Tracer: SimulationTracer> PartialBlockFork<'a, 'b, Tracer> {
         }
 
         let ctx = &ctx.chains[&tx_with_blobs.as_ref().chain_id().unwrap()];
-
-        let ctx = &ctx.chains[&tx_with_blobs.as_ref().chain_id().unwrap()];
-
         let mut db = self.state.new_db_ref();
         let tx = &tx_with_blobs.internal_tx_unsecure();
         if ctx.blocklist.contains(&tx.signer())

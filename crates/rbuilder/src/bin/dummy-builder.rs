@@ -78,6 +78,7 @@ async fn main() -> eyre::Result<()> {
         error_storage_path: None,
         simulation_threads: 1,
         blocks_source: payload_event,
+        run_sparse_trie_prefetcher: false,
         order_input_config: OrderInputConfig::new(
             false,
             true,

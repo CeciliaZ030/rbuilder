@@ -186,7 +186,8 @@ mod tests {
     use alloy_primitives::{Address, B256, U256};
     use reth_primitives::revm_primitives::AccountInfo;
     use revm::db::{states::StorageSlot, AccountStatus, BundleAccount};
-    use std::collections::HashMap;
+    use revm_primitives::ChainAddress;
+    use std::{collections::HashMap, ops::Add};
 
     struct TestDataGenerator {
         last_used_id: u64,
@@ -224,7 +225,7 @@ mod tests {
                 storage_bundle_account,
                 AccountStatus::Changed,
             );
-            bundle_state.state.insert(Address::random(), account);
+            bundle_state.state.insert(ChainAddress(0, Address::random()), account);
 
             CachedSimulationState {
                 cached_reads,

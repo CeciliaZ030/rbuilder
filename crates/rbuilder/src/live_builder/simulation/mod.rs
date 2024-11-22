@@ -29,7 +29,6 @@ type BlockContextId = u64;
 #[derive(Debug, Clone)]
 pub struct SimulationContext {
     pub block_ctx: BlockBuildingContext,
-    pub block_ctx: BlockBuildingContext,
     /// Simulation requests come in through this channel.
     pub requests: flume::Receiver<SimulationRequest>,
     /// Simulation results go out through this channel.
@@ -218,7 +217,7 @@ mod tests {
         orders_for_blocks.insert(test_context.chain_spec.chain.id(), orders_for_block);
         orders_for_blocks.insert(test_context.chain_spec.chain.id() + 1, orders_for_block2);
         let mut sim_results = sim_pool.spawn_simulation_job(
-            test_context.block_building_context(),
+            test_context.block_building_context().clone(),
             orders_for_blocks,
             cancel.clone(),
         );

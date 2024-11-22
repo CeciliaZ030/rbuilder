@@ -13,7 +13,6 @@ use crate::{
     building::{
         builders::{BlockBuildingAlgorithm, UnfinishedBlockBuildingSinkFactory},
         BlockBuildingContext, ChainBlockBuildingContext
-        BlockBuildingContext, ChainBlockBuildingContext
     },
     live_builder::{
         order_input::{start_orderpool_jobs, OrderInputConfig},
@@ -38,9 +37,9 @@ use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 use std::fmt::Debug;
 use std::{cmp::min, path::PathBuf, sync::Arc, thread::sleep, time::Duration};
 use time::OffsetDateTime;
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task::spawn_blocking};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, warn, error};
 
 use layer2_info::Layer2Info;
 

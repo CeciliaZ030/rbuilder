@@ -137,7 +137,7 @@ async fn get_tx_with_blobs(
 mod test {
     use super::*;
     use alloy_consensus::{SidecarBuilder, SimpleCoder};
-    use alloy_network::{EthereumWallet, TransactionBuilder};
+    use alloy_network::{EthereumWallet, TransactionBuilder, TransactionBuilder4844};
     use alloy_node_bindings::Anvil;
     use alloy_primitives::U256;
     use alloy_provider::{Provider, ProviderBuilder};
@@ -178,7 +178,7 @@ mod test {
         let gas_price = provider.get_gas_price().await.unwrap();
         let eip1559_est = provider.estimate_eip1559_fees(None).await.unwrap();
 
-        let tx = TransactionRequest::default()
+        let mut tx = TransactionRequest::default()
             .with_to(alice)
             .with_nonce(0)
             .with_max_fee_per_blob_gas(gas_price)

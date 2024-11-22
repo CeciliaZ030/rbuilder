@@ -238,6 +238,7 @@ mod tests {
     use reth::primitives::{
         Transaction, TransactionSigned, TransactionSignedEcRecovered, TxLegacy,
     };
+    use revm_primitives::ChainAddress;
 
     use crate::{
         building::evm_inspector::{SlotKey, UsedStateTrace},
@@ -275,7 +276,7 @@ mod tests {
 
         pub fn create_slot(&mut self) -> SlotKey {
             SlotKey {
-                address: Address::ZERO,
+                address: ChainAddress::default(),
                 key: self.create_b256(),
             }
         }

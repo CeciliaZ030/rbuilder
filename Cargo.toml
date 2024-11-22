@@ -119,4 +119,3 @@ reth-provider = { path = "../reth/crates/storage/provider" }
 reth-chainspec = { path = "../reth/crates/chainspec" }
 reth-evm = { path = "../reth/crates/evm" }
 reth-evm-ethereum = { path = "../reth/crates/ethereum/evm" }
-reth-trie-db = { path = "../reth/crates/trie/db" }

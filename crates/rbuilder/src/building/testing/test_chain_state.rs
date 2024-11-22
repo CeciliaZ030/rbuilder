@@ -18,7 +18,7 @@ use reth_db::{
     cursor::DbCursorRW, tables, test_utils::TempDatabase, transaction::DbTxMut, DatabaseEnv,
 };
 use reth_provider::test_utils::create_test_provider_factory;
-use revm_primitives::SpecId;
+use revm_primitives::{ChainAddress, OnChain, SpecId};
 use std::sync::Arc;
 
 use crate::{building::{BlockBuildingContext, ChainBlockBuildingContext}, utils::Signer};
@@ -175,7 +175,7 @@ impl TestChainState {
             max_fee_per_gas: args.max_fee_per_gas,
             max_priority_fee_per_gas: args.max_priority_fee,
             to: match args.to {
-                Some(named_addr) => TransactionKind::Call(self.named_address(named_addr)?),
+                Some(named_addr) => TransactionKind::Call(self.named_address(named_addr)?.1),
                 None => TransactionKind::Create,
             },
             value: U256::from(args.value),
@@ -185,18 +185,18 @@ impl TestChainState {
         Ok(self.named_signer(args.account_idx)?.sign_tx(tx.into())?)
     }
 
-    pub fn named_address(&self, named_addr: NamedAddr) -> eyre::Result<Address> {
+    pub fn named_address(&self, named_addr: NamedAddr) -> eyre::Result<ChainAddress> {
         Ok(match named_addr {
-            NamedAddr::Builder => self.builder.address.1,
-            NamedAddr::MevTest => self.mev_test_address,
-            NamedAddr::Dummy => self.dummy_test_address,
-            NamedAddr::BlockedAddress => self.blocklisted_address.address.1,
-            NamedAddr::FeeRecipient => self.fee_recipient.address.1,
+            NamedAddr::Builder => self.builder.address,
+            NamedAddr::MevTest => self.mev_test_address.on_chain(self.chain_spec.chain.id()),
+            NamedAddr::Dummy => self.dummy_test_address.on_chain(self.chain_spec.chain.id()),
+            NamedAddr::BlockedAddress => self.blocklisted_address.address,
+            NamedAddr::FeeRecipient => self.fee_recipient.address,
             NamedAddr::User(idx) => {
                 self.test_accounts
                     .get(idx)
                     .ok_or_else(|| eyre::eyre!("invalid user index"))?
-                    .address.1
+                    .address
             }
         })
     }
@@ -216,6 +216,14 @@ impl TestChainState {
     }
     pub fn block_building_context(&self) -> &BlockBuildingContext {
         &self.block_building_context
+    }
+
+    pub fn parant_chain_building_context(&self) -> ChainBlockBuildingContext {
+        self.block_building_context
+            .chains
+            .get(&self.block_building_context.parent_chain_id)
+            .expect("BlockBuildingContext for parant chain missing")
+            .clone()
     }
 
     pub fn provider_factory(&self) -> &ProviderFactory<Arc<TempDatabase<DatabaseEnv>>> {

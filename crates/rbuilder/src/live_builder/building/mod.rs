@@ -65,7 +65,6 @@ where
         &mut self,
         payload: payload_events::MevBoostSlotData,
         block_ctx: BlockBuildingContext,
-        block_ctx: BlockBuildingContext,
         global_cancellation: CancellationToken,
         max_time_to_build: Duration,
     ) {
@@ -83,7 +82,6 @@ where
         for (chain_id, orderpool_subscriber) in self.orderpool_subscribers.iter_mut() {
             let (orders_for_block, sink) = OrdersForBlock::new_with_sink();
             let _block_sub = orderpool_subscriber.add_sink(
-                block_ctx.chains[chain_id].block_env.number.to(),
                 block_ctx.chains[chain_id].block_env.number.to(),
                 Box::new(OrderReplacementManager::new(Box::new(sink))),
             );
@@ -106,7 +104,6 @@ where
     /// Per each BlockBuildingAlgorithm creates BlockBuildingAlgorithmInput and Sinks and spawn a task to run it
     fn start_building_job(
         &mut self,
-        ctx: BlockBuildingContext,
         ctx: BlockBuildingContext,
         slot_data: MevBoostSlotData,
         input: SlotOrderSimResults,

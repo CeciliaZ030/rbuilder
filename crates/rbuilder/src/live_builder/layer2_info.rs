@@ -51,7 +51,7 @@ pub struct GwynethNode<P, DB> {
 
 #[derive(Debug)]
 pub struct Layer2Info<P, DB> {
-    pub ipc_providers: Arc<RwLock<HashMap<u64, (RootProvider<PubSubFrontend>, String)>>>,  // Changed to RwLock
+    pub ipc_providers: Arc<RwLock<HashMap<u64, (RootProvider<PubSubFrontend>, PathBuf)>>>,  // Changed to RwLock
     pub data_dirs: HashMap<u64, PathBuf>,
     pub nodes: HashMap<u64, GwynethNode<P, DB>>,
     _phantom: PhantomData<DB>,
@@ -91,7 +91,7 @@ where
             providers.insert(chain_id, (provider, ipc_path.clone()));
             data_dirs_map.insert(chain_id, data_dir.clone());
             nodes.insert(chain_id, GwynethNode::<P, DB> {
-                provider_factory: provider_factory.clone(),
+                    provider_factory: provider_factory.clone(),
                     order_input_config: OrderInputConfig::new(
                         true,
                         false,
@@ -102,6 +102,7 @@ where
                         Duration::from_millis(50),
                         10_000,
                     ),
+                    _phantom: PhantomData,
             });
         }
     
@@ -144,7 +145,7 @@ where
                 Ok(_) => true,
                 Err(_) => {
                     warn!("Connection lost for chain_id: {}. Attempting to reconnect...", chain_id);
-                    match self.reconnect(&provider, &ipc_path.clone()).await {
+                    match self.reconnect(&provider, ipc_path.to_str().unwrap()).await {
                         Ok(new_provider) => {
                             // Update the provider with write lock
                             let mut providers = self.ipc_providers.write().unwrap();

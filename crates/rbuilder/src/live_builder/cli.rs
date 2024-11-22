@@ -48,6 +48,7 @@ pub trait LiveBuilderConfig: Debug + DeserializeOwned + Sync {
     fn new_builder<P, DB>(
         &self,
         provider: P,
+        l2_provider_factories: Vec<P>,
         cancellation_token: CancellationToken,
     ) -> impl std::future::Future<Output = eyre::Result<LiveBuilder<P, DB, MevBoostSlotDataGenerator>>>
            + Send
@@ -88,7 +89,7 @@ where
     };
 
     let config: ConfigType = load_config_toml_and_env(cli.config)?;
-    config.base_config().setup_tracing_subsriber()?;
+    config.base_config().setup_tracing_subscriber()?;
     println!("config from toml: {:?}", config);
 
     let cancel = CancellationToken::new();
@@ -105,7 +106,8 @@ where
     )
     .await?;
     let provider = config.base_config().create_provider_factory()?;
-    let builder = config.new_builder(provider, cancel.clone()).await?;
+    let l2_providers = config.base_config().gwyneth_provider_factories()?;
+    let builder = config.new_builder(provider, l2_providers, cancel.clone()).await?;
 
     let ctrlc = tokio::spawn(async move {
         ctrl_c().await.unwrap_or_default();

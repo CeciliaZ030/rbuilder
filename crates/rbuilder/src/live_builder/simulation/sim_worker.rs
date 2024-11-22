@@ -90,7 +90,6 @@ pub fn run_sim_worker<P, DB>(
                 task.parents.clone(),
                 task.order.clone(),
                 &current_sim_context.block_ctx,
-                &current_sim_context.block_ctx,
                 &mut block_state,
             );
             match sim_result {
