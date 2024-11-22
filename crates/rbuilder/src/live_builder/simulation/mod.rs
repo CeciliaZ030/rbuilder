@@ -29,6 +29,7 @@ type BlockContextId = u64;
 #[derive(Debug, Clone)]
 pub struct SimulationContext {
     pub block_ctx: BlockBuildingContext,
+    pub block_ctx: BlockBuildingContext,
     /// Simulation requests come in through this channel.
     pub requests: flume::Receiver<SimulationRequest>,
     /// Simulation results go out through this channel.

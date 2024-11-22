@@ -148,6 +148,7 @@ where
 
     let mut provider_factories = HashMap::default();
     provider_factories.insert(input.ctx.parent_chain_id, input.provider_factory.clone());
+    provider_factories.insert(input.ctx.parent_chain_id, input.provider_factory.clone());
 
     let mut ctxs = HashMap::default();
     ctxs.insert(input.ctx.parent_chain_id, input.ctx.clone());

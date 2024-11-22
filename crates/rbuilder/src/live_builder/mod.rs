@@ -13,6 +13,7 @@ use crate::{
     building::{
         builders::{BlockBuildingAlgorithm, UnfinishedBlockBuildingSinkFactory},
         BlockBuildingContext, ChainBlockBuildingContext
+        BlockBuildingContext, ChainBlockBuildingContext
     },
     live_builder::{
         order_input::{start_orderpool_jobs, OrderInputConfig},
@@ -218,6 +219,28 @@ where
                     }
                 }
             };
+
+            println!("Dani debug: gather block hashes");
+            {
+                let provider_factory = self.provider_factory.clone();
+                let block = payload.block();
+                match spawn_blocking(move || {
+                    provider_factory.check_consistency_and_reopen_if_needed(block)
+                })
+                .await
+                {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(err)) => {
+                        error!(?err, "Failed to check historical block hashes");
+                        // This error is unrecoverable so we restart.
+                        break;
+                    }
+                    Err(err) => {
+                        error!(?err, "Failed to join historical block hashes task");
+                        continue;
+                    }
+                }
+            }
 
             debug!(
                 slot = payload.slot(),

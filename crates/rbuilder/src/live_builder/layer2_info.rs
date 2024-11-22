@@ -71,45 +71,42 @@ where
     P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
 {
     pub async fn new(
-        chain_ids: Vec<u64>,
-        provider_factory: P,
+        provider_factories: Vec<P>, 
+        data_dirs: &Vec<PathBuf>, 
+        ipc_paths: &Vec<PathBuf>, 
+        server_ports: &Vec<u64>
     ) -> Result<Self> {
         let mut providers = HashMap::default();
         let mut data_dirs_map = HashMap::default();
-    
-        let datadir_base = "/data/reth/gwyneth";
-        let ipc_base: &str = "/tmp/reth.ipc";
-    
-        let chain = chain_value_parser("/network-configs/genesis.json").expect("failed to load gwyneth chain spec");
-    
         let mut nodes = HashMap::default();
-        for chain_id in chain_ids {
-            let ipc_path = format!("{}-{}", ipc_base, chain_id).to_owned();
-            let data_dir = format!("{}-{}", datadir_base, chain_id).to_owned();
-    
-            let ipc = IpcConnect::new(ipc_path.clone());
+        for (((provider_factory, data_dir), ipc_path), port) in provider_factories
+            .iter()
+            .zip(data_dirs.iter())
+            .zip(ipc_paths.iter())
+            .zip(server_ports.iter()) 
+        {
+            let ipc: IpcConnect<_> = IpcConnect::new(ipc_path.clone());
             let provider = ProviderBuilder::new().on_ipc(ipc).await?;
-            providers.insert(chain_id, (provider, ipc_path));
-            data_dirs_map.insert(chain_id, PathBuf::from(data_dir));
-    
+            let chain_id = provider.get_chain_id().await?;
+            providers.insert(chain_id, (provider, ipc_path.clone()));
+            data_dirs_map.insert(chain_id, data_dir.clone());
             nodes.insert(chain_id, GwynethNode::<P, DB> {
                 provider_factory: provider_factory.clone(),
-                order_input_config: OrderInputConfig::new(
-                    true,
-                    false,
-                    Path::new(&format!("{}-{}", ipc_base, chain_id).to_owned()).into(),
-                    9646 + ((chain_id + 1) - 167010) as u16,
-                    Ipv4Addr::new(0, 0, 0, 0),
-                    4096,
-                    Duration::from_millis(50),
-                    10_000,
-                ),
-                _phantom: PhantomData,
+                    order_input_config: OrderInputConfig::new(
+                        true,
+                        false,
+                        ipc_path.clone(),
+                        *port as u16,                    
+                        Ipv4Addr::new(0, 0, 0, 0),
+                        4096,
+                        Duration::from_millis(50),
+                        10_000,
+                    ),
             });
         }
     
         Ok(Self {
-            ipc_providers: Arc::new(RwLock::new(providers)),  // Changed to RwLock
+            ipc_providers: Arc::new(RwLock::new(providers)), 
             data_dirs: data_dirs_map,
             nodes,
             _phantom: PhantomData,
@@ -147,7 +144,7 @@ where
                 Ok(_) => true,
                 Err(_) => {
                     warn!("Connection lost for chain_id: {}. Attempting to reconnect...", chain_id);
-                    match self.reconnect(&provider, &ipc_path).await {
+                    match self.reconnect(&provider, &ipc_path.clone()).await {
                         Ok(new_provider) => {
                             // Update the provider with write lock
                             let mut providers = self.ipc_providers.write().unwrap();
