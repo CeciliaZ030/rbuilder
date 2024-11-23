@@ -20,7 +20,7 @@ use crate::{
         watchdog::spawn_watchdog_thread,
     },
     telemetry::inc_active_slots,
-    utils::{error_storage::spawn_error_storage_writer, Signer},
+    utils::{error_storage::spawn_error_storage_writer, ProviderFactoryReopener, Signer},
 };
 use ahash::{HashMap, HashSet};
 use alloy_chains::Chain;
@@ -34,10 +34,10 @@ use reth::{primitives::Header, providers::HeaderProvider};
 use reth_chainspec::ChainSpec;
 use reth_db::Database;
 use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
-use std::fmt::Debug;
+use std::{fmt::Debug, thread::sleep};
 use std::{cmp::min, path::PathBuf, sync::Arc, time::Duration};
 use time::OffsetDateTime;
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task::spawn_blocking};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn, error};
 
@@ -75,7 +75,7 @@ where
     pub run_sparse_trie_prefetcher: bool,
 
     pub chain_chain_spec: Arc<ChainSpec>,
-    pub provider: ProviderFactoryReopener<DB>,
+    pub provider: P,
 
     pub coinbase_signer: Signer,
     pub extra_data: Vec<u8>,
@@ -133,7 +133,7 @@ where
         };
         orderpool_subscribers.insert(self.chain_chain_spec.chain.id(), orderpool_subscriber);
 
-        let mut providers: HashMap<u64, P> = HashMap::default();
+        let mut providers = HashMap::default();
         providers.insert(self.chain_chain_spec.chain.id(), self.provider.clone());
 
         for (chain_id, node) in self.layer2_info.nodes.iter() {
@@ -209,8 +209,7 @@ where
                 // @Nicer
                 let parent_block = payload.parent_block_hash();
                 let timestamp = payload.timestamp();
-                let provider_factory = self.provider.provider_factory_unchecked();
-                match wait_for_block_header(parent_block, timestamp, &provider_factory).await {
+                match wait_for_block_header(parent_block, timestamp, &self.provider).await {
                     Ok(header) => header,
                     Err(err) => {
                         warn!("Failed to get parent header for new slot: {:?}", err);
@@ -218,27 +217,6 @@ where
                     }
                 }
             };
-
-            {
-                let provider_factory = self.provider.clone();
-                let block = payload.block();
-                match spawn_blocking(move || {
-                    provider_factory.check_consistency_and_reopen_if_needed(block)
-                })
-                .await
-                {
-                    Ok(Ok(_)) => {}
-                    Ok(Err(err)) => {
-                        error!(?err, "Failed to check historical block hashes");
-                        // This error is unrecoverable so we restart.
-                        break;
-                    }
-                    Err(err) => {
-                        error!(?err, "Failed to join historical block hashes task");
-                        continue;
-                    }
-                }
-            }
 
             debug!(
                 slot = payload.slot(),

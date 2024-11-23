@@ -375,7 +375,6 @@ dependencies = [
  "async-trait",
  "auto_impl",
  "dashmap 6.1.0",
- "dashmap 6.1.0",
  "futures",
  "futures-utils-wasm",
  "lru",

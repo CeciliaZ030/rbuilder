@@ -49,7 +49,7 @@ use eyre::Context;
 use reth::tasks::pool::BlockingTaskPool;
 use reth_chainspec::{Chain, ChainSpec, NamedChain};
 use reth_db::{Database, DatabaseEnv};
-use reth_payload_builder::database::SyncCachedReads;
+use reth_payload_builder::database::{CachedReads, SyncCachedReads};
 use reth_primitives::StaticFileSegment;
 use reth_provider::{
     DatabaseProviderFactory, HeaderProvider, StateProviderFactory, StaticFileProviderFactory,
@@ -346,7 +346,7 @@ impl LiveBuilderConfig for Config {
             self.base_config.sbundle_mergeabe_signers(),
         );
 
-        Ok(live_builder.with_builders_and_layer2_info(builders))
+        Ok(live_builder.with_builders(builders))
     }
 
     fn version_for_telemetry(&self) -> crate::utils::build_info::Version {
