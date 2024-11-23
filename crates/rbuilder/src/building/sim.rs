@@ -313,16 +313,13 @@ where
 /// `randomize_insertion` is used to debug if sim tree works correctly when orders are inserted in a different order
 /// outputs should be independent of this arg.
 pub fn simulate_all_orders_with_sim_tree<P>(
-    provider_factories: HashMap<u64, P>,
+    providers: HashMap<u64, P>,
     ctx: &BlockBuildingContext,
     orders: &[Order],
     randomize_insertion: bool,
-) -> Result<(Vec<SimulatedOrder>, Vec<OrderErr>), CriticalCommitOrderError>
-where
-    P: StateProviderFactory + Clone + 'static,
-{
+) -> Result<(Vec<SimulatedOrder>, Vec<OrderErr>), CriticalCommitOrderError> {
     let parent_block_hashes = ctx.chains.iter().map(|(chain_id, ctx)| (*chain_id, ctx.attributes.parent)).collect();
-    let mut sim_tree = SimTree::new(provider_factories.clone(), parent_block_hashes);
+    let mut sim_tree = SimTree::new(providers.clone(), parent_block_hashes);
 
     let mut orders = orders.to_vec();
     let random_insert_size = max(orders.len() / 20, 1);
@@ -336,8 +333,8 @@ where
 
     let mut sim_errors = Vec::new();
     let mut state_for_sim: HashMap<u64, Arc<dyn StateProvider>> = HashMap::default();
-    for (&chain_id, factory) in provider_factories.iter() {
-        state_for_sim.insert(chain_id, Arc::<dyn StateProvider>::from(factory.history_by_block_hash(ctx.chains[&chain_id].attributes.parent)?));
+    for (&chain_id, provider) in providers.iter() {
+        state_for_sim.insert(chain_id, Arc::<dyn StateProvider>::from(provider.history_by_block_hash(ctx.chains[&chain_id].attributes.parent)?));
     }
     let mut cache_reads = Some(CachedReads::default());
     loop {

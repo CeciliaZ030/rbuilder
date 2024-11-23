@@ -1,4 +1,5 @@
 use std::{iter, time::Instant};
+
 use ahash::{HashMap, HashSet};
 use alloy_primitives::{Address, B256};
 use eth_sparse_mpt::{
@@ -15,8 +16,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, trace, warn};
 
 use crate::{
-    building::evm_inspector::SlotKey,
-    live_builder::simulation::SimulatedOrderCommand,
+    building::evm_inspector::SlotKey, live_builder::simulation::SimulatedOrderCommand,
     primitives::SimulatedOrder,
 };
 
@@ -109,16 +109,14 @@ pub fn run_trie_prefetcher<P, DB>(
                         .zip(iter::repeat(true)),
                 );
 
-            for (chain_address, destroyed) in changed_accounts_iter {
-                // Extract the inner Address from ChainAddress
-                let address = chain_address.1;
-                if fetched_accounts.contains(&address) {
+            for (address, destroyed) in changed_accounts_iter {
+                if fetched_accounts.contains(address) {
                     continue;
                 }
-                fetched_accounts.insert(address);
+                fetched_accounts.insert(*address);
                 fetch_request
-                    .entry(address)
-                    .or_insert_with(|| ChangedAccountData::new(address, destroyed));
+                    .entry(*address)
+                    .or_insert_with(|| ChangedAccountData::new(*address, destroyed));
             }
 
             for (written_slot, value) in &used_state_trace.written_slot_values {
@@ -126,12 +124,9 @@ pub fn run_trie_prefetcher<P, DB>(
                     continue;
                 }
                 fetched_slots.insert(written_slot.clone());
-                
-                // Extract the inner Address from ChainAddress in the slot
-                let address = written_slot.address.1;
                 let account_request = fetch_request
-                    .entry(address)
-                    .or_insert_with(|| ChangedAccountData::new(address, false));
+                    .entry(written_slot.address)
+                    .or_insert_with(|| ChangedAccountData::new(written_slot.address, false));
                 account_request
                     .slots
                     .push((written_slot.key, value.is_zero()));

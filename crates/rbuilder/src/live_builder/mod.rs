@@ -20,7 +20,7 @@ use crate::{
         watchdog::spawn_watchdog_thread,
     },
     telemetry::inc_active_slots,
-    utils::{error_storage::spawn_error_storage_writer, Signer, ProviderFactoryUnchecked, provider_factory_reopen::ConsistencyReopener},
+    utils::{error_storage::spawn_error_storage_writer, Signer},
 };
 use ahash::{HashMap, HashSet};
 use alloy_chains::Chain;
@@ -35,9 +35,9 @@ use reth_chainspec::ChainSpec;
 use reth_db::Database;
 use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 use std::fmt::Debug;
-use std::{cmp::min, path::PathBuf, sync::Arc, thread::sleep, time::Duration};
+use std::{cmp::min, path::PathBuf, sync::Arc, time::Duration};
 use time::OffsetDateTime;
-use tokio::{sync::mpsc, task::spawn_blocking};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn, error};
 
@@ -64,7 +64,7 @@ pub trait SlotSource {
 pub struct LiveBuilder<P, DB, BlocksSourceType>
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ProviderFactoryUnchecked<DB> + ConsistencyReopener<DB> + Clone + 'static,
+    P: StateProviderFactory + Clone,
     BlocksSourceType: SlotSource,
 {
     pub watchdog_timeout: Duration,
@@ -75,7 +75,7 @@ where
     pub run_sparse_trie_prefetcher: bool,
 
     pub chain_chain_spec: Arc<ChainSpec>,
-    pub provider_factory: P,
+    pub provider: ProviderFactoryReopener<DB>,
 
     pub coinbase_signer: Signer,
     pub extra_data: Vec<u8>,
@@ -92,14 +92,14 @@ where
 impl<P, DB, BlocksSourceType: SlotSource> LiveBuilder<P, DB, BlocksSourceType>
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ProviderFactoryUnchecked<DB> + ConsistencyReopener<DB> + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
     BlocksSourceType: SlotSource,
 {
     pub fn with_extra_rpc(self, extra_rpc: RpcModule<()>) -> Self {
         Self { extra_rpc, ..self }
     }
 
-    pub fn with_builders_and_layer2_info(self, builders: Vec<Arc<dyn BlockBuildingAlgorithm<P, DB>>>) -> Self {
+    pub fn with_builders(self, builders: Vec<Arc<dyn BlockBuildingAlgorithm<P, DB>>>) -> Self {
         Self { builders, ..self }
     }
 
@@ -123,7 +123,7 @@ where
         let orderpool_subscriber = {
             let (handle, sub) = start_orderpool_jobs(
                 self.order_input_config,
-                self.provider_factory.clone(),
+                self.provider.clone(),
                 self.extra_rpc,
                 self.global_cancellation.clone(),
             )
@@ -133,8 +133,8 @@ where
         };
         orderpool_subscribers.insert(self.chain_chain_spec.chain.id(), orderpool_subscriber);
 
-        let mut provider_factories: HashMap<u64, P> = HashMap::default();
-        provider_factories.insert(self.chain_chain_spec.chain.id(), self.provider_factory.clone());
+        let mut providers: HashMap<u64, P> = HashMap::default();
+        providers.insert(self.chain_chain_spec.chain.id(), self.provider.clone());
 
         for (chain_id, node) in self.layer2_info.nodes.iter() {
             let orderpool_subscriber = {
@@ -149,19 +149,19 @@ where
                 sub
             };
             orderpool_subscribers.insert(*chain_id, orderpool_subscriber);
-            provider_factories.insert(*chain_id, node.provider_factory.clone());
+            providers.insert(*chain_id, node.provider_factory.clone());
         }
 
         let order_simulation_pool = {
             OrderSimulationPool::new(
-                provider_factories.clone(),
+                providers.clone(),
                 self.simulation_threads,
                 self.global_cancellation.clone(),
             )
         };
 
         let mut builder_pool = BlockBuildingPool::new(
-            provider_factories.clone(),
+            providers.clone(),
             self.builders,
             self.sink_factory,
             orderpool_subscribers,
@@ -172,7 +172,7 @@ where
         let watchdog_sender = spawn_watchdog_thread(self.watchdog_timeout)?;
 
         let mut all_chain_ids = vec![self.chain_chain_spec.chain.id()];
-        all_chain_ids.append(&mut provider_factories.keys().cloned().collect::<Vec<_>>());
+        all_chain_ids.append(&mut providers.keys().cloned().collect::<Vec<_>>());
 
         while let Some(payload) = payload_events_channel.recv().await {
             println!("Payload_attributes event received");
@@ -209,7 +209,7 @@ where
                 // @Nicer
                 let parent_block = payload.parent_block_hash();
                 let timestamp = payload.timestamp();
-                let provider_factory = self.provider_factory.clone().provider_factory_unchecked();
+                let provider_factory = self.provider.provider_factory_unchecked();
                 match wait_for_block_header(parent_block, timestamp, &provider_factory).await {
                     Ok(header) => header,
                     Err(err) => {
@@ -219,9 +219,8 @@ where
                 }
             };
 
-            println!("Dani debug: gather block hashes");
             {
-                let provider_factory = self.provider_factory.clone();
+                let provider_factory = self.provider.clone();
                 let block = payload.block();
                 match spawn_blocking(move || {
                     provider_factory.check_consistency_and_reopen_if_needed(block)
@@ -266,7 +265,7 @@ where
 
             // TODO: Brecht
             let mut chains = HashMap::default();
-            for (&chain_id, _) in provider_factories.iter() {
+            for (&chain_id, _) in providers.iter() {
                 println!("setting up {}", chain_id);
                 let mut block_ctx = block_ctx.clone();
                 let mut chain_spec = (*block_ctx.chain_spec).clone();

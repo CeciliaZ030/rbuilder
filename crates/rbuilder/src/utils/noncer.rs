@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 ///   Neither NonceCache or NonceCacheRef are clonable, the clone of shared info happens on get_ref where we clone the internal cache.
 #[derive(Debug)]
 pub struct NonceCache<P> {
-    provider_factory: HashMap<u64, P>,
+    providers: HashMap<u64, P>,
     // We have to use Arc<Mutex here because Rc are not Send (so can't be used in futures)
     // and borrows don't work when nonce cache is a field in a struct.
     cache: Arc<Mutex<HashMap<ChainAddress, u64>>>,
@@ -25,9 +25,9 @@ impl<P> NonceCache<P>
 where
     P: StateProviderFactory,
 {
-    pub fn new(provider_factory: HashMap<u64, P>, block: HashMap<u64, B256>) -> Self {
+    pub fn new(providers: HashMap<u64, P>, block: HashMap<u64, B256>) -> Self {
         Self {
-            provider_factory,
+            providers,
             cache: Arc::new(Mutex::new(HashMap::default())),
             block,
         }
@@ -35,8 +35,8 @@ where
 
     pub fn get_ref(&self) -> ProviderResult<NonceCacheRef> {
         let mut states = HashMap::default();
-        for (chain_id, provider_factory) in self.provider_factory.iter() {
-            states.insert(*chain_id, provider_factory.history_by_block_hash(self.block[chain_id])?);
+        for (chain_id, providers) in self.providers.iter() {
+            states.insert(*chain_id, providers.history_by_block_hash(self.block[chain_id])?);
         }
         Ok(NonceCacheRef {
             states,

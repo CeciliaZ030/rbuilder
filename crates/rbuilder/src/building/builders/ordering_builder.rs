@@ -17,13 +17,9 @@ use crate::{
 };
 use ahash::{HashMap, HashSet};
 use alloy_primitives::Address;
-use reth_db::database::Database;
-use reth_provider::StateProvider;
 use revm_primitives::ChainAddress;
-use tokio_util::sync::CancellationToken;
-
-use crate::utils::{check_provider_factory_health, ProviderFactoryUnchecked};
 use reth::tasks::pool::BlockingTaskPool;
+use reth_db::database::Database;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
 use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 use serde::Deserialize;
@@ -69,10 +65,10 @@ impl OrderingBuilderConfig {
 pub fn run_ordering_builder<P, DB>(input: LiveBuilderInput<P, DB>, config: &OrderingBuilderConfig)
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + ProviderFactoryUnchecked<DB> + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
 {
     let mut order_intake_consumer = OrderIntakeConsumer::new(
-        input.provider_factory.clone(),
+        input.provider.clone(),
         input.input,
         input.ctx.chains.iter().map(|(chain_id, ctx)| (*chain_id, ctx.attributes.parent)).collect(),
         config.sorting,
@@ -80,7 +76,7 @@ where
     );
 
     let mut builder = OrderingBuilderContext::new(
-        input.provider_factory.clone(),
+        input.provider.clone(),
         input.root_hash_task_pool,
         input.builder_name,
         input.ctx,
@@ -146,25 +142,24 @@ where
 {
     println!("backtest_simulate_block");
 
-    let mut provider_factories = HashMap::default();
-    provider_factories.insert(input.ctx.parent_chain_id, input.provider_factory.clone());
-    provider_factories.insert(input.ctx.parent_chain_id, input.provider_factory.clone());
+    let mut providers = HashMap::default();
+    providers.insert(input.ctx.parent_chain_id, input.providers.clone());
 
     let mut ctxs = HashMap::default();
     ctxs.insert(input.ctx.parent_chain_id, input.ctx.clone());
     let use_suggested_fee_recipient_as_coinbase = ordering_config.coinbase_payment;
 
     // Get the provider factory for parent chain first
-    let provider_factory = input.provider_factory.get(&input.ctx.parent_chain_id)
+    let providers = input.providers.get(&input.ctx.parent_chain_id)
         .ok_or_else(|| eyre::eyre!("No provider factory found for parent chain {}", input.ctx.parent_chain_id))?;
 
-    let state_provider = provider_factory
+    let state_provider = providers
         .history_by_block_number(input.ctx.chains[&input.ctx.parent_chain_id].block_env.number.to::<u64>() - 1)?;
 
     let mut state_for_sim: HashMap<u64, Arc<dyn StateProvider>> = HashMap::default();
 
     // Iterate through chains and set up state providers
-    for (chain_id, provider) in input.provider_factory.iter() {
+    for (chain_id, provider) in input.providers.iter() {
         let state = provider.history_by_block_hash(input.ctx.chains[chain_id].attributes.parent)?;
         state_for_sim.insert(*chain_id, Arc::from(state));
     }
@@ -211,7 +206,7 @@ where
 
 #[derive(Debug)]
 pub struct OrderingBuilderContext<P, DB> {
-    provider_factory: HashMap<u64, P>,
+    providers: HashMap<u64, P>,
     root_hash_task_pool: BlockingTaskPool,
     builder_name: String,
     ctx: BlockBuildingContext,
@@ -231,7 +226,7 @@ pub struct OrderingBuilderContext<P, DB> {
 impl<P, DB> OrderingBuilderContext<P, DB>
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + ProviderFactoryUnchecked<DB> + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
 {
     pub fn new(
         provider_factory: HashMap<u64, P>,
@@ -242,7 +237,7 @@ where
         root_hash_config: RootHashConfig,
     ) -> Self {
         Self {
-            provider_factory,
+            provider,
             root_hash_task_pool,
             builder_name,
             ctx,
@@ -283,7 +278,7 @@ where
 
         // Create a new ctx to remove builder_signer if necessary
         let new_ctx = self.ctx.clone();
-        for (chain_id, provider_factory) in self.provider_factory.iter() {
+        for (chain_id, provider_factory) in self.providers.iter() {
             check_provider_factory_health(self.ctx.chains[chain_id].block(),  &provider_factory.provider_factory_unchecked())?;
             if use_suggested_fee_recipient_as_coinbase {
                 self.ctx.chains.get_mut(chain_id).unwrap().modify_use_suggested_fee_recipient_as_coinbase();
@@ -294,7 +289,7 @@ where
         self.order_attempts.clear();
 
         let mut block_building_helper = BlockBuildingHelperFromProvider::new(
-            self.provider_factory.clone(),
+            self.providers.clone(),
             self.root_hash_task_pool.clone(),
             self.root_hash_config.clone(),
             new_ctx,
@@ -411,7 +406,7 @@ impl OrderingBuildingAlgorithm {
 impl<P, DB> BlockBuildingAlgorithm<P, DB> for OrderingBuildingAlgorithm
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + ProviderFactoryUnchecked<DB> + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
 {
     fn name(&self) -> String {
         self.name.clone()
@@ -419,7 +414,7 @@ where
 
     fn build_blocks(&self, input: BlockBuildingAlgorithmInput<P>) {
         let live_input = LiveBuilderInput {
-            provider_factory: input.provider_factory,
+            provider: input.provider,
             root_hash_config: self.root_hash_config.clone(),
             root_hash_task_pool: self.root_hash_task_pool.clone(),
             ctx: input.ctx.clone(),

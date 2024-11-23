@@ -10,7 +10,7 @@ use alloy_primitives::{B256, I256};
 use eyre::Context;
 use reth_chainspec::ChainSpec;
 use reth_primitives::{Receipt, TransactionSignedEcRecovered, TxHash};
-use reth_provider::StateProviderFactory;
+use reth_provider::StateStateProviderFactory;
 use revm_primitives::ChainAddress;
 use std::sync::Arc;
 

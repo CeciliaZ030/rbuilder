@@ -208,16 +208,16 @@ impl BaseConfig {
         cancellation_token: tokio_util::sync::CancellationToken,
         sink_factory: Box<dyn UnfinishedBlockBuildingSinkFactory>,
         slot_source: SlotSourceType,
-        provider_factory: P,
-        l2_provider_factory: Vec<P>,
+        provider: P,
+        l2_providers: Vec<P>,
     ) -> eyre::Result<super::LiveBuilder<P, DB, SlotSourceType>>
     where
         DB: Database + Clone + 'static,
-        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ProviderFactoryUnchecked<DB> + ConsistencyReopener<DB> + Clone + 'static,
+        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone,
         SlotSourceType: SlotSource,
     {
         let layer2_info = Layer2Info::<P, DB>::new(
-            l2_provider_factory,
+            l2_providers,
             &self.l2_reth_datadirs,
             &self.l2_ipc_paths,
             &self.l2_server_ports,
@@ -229,7 +229,7 @@ impl BaseConfig {
             order_input_config: OrderInputConfig::from_config(self)?,
             blocks_source: slot_source,
             chain_chain_spec: self.chain_spec()?,
-            provider_factory,
+            provider,
 
             coinbase_signer: self.coinbase_signer()?,
             extra_data: self.extra_data()?,

@@ -8,10 +8,10 @@ use crate::{
     },
     live_builder::order_input::orderpool::OrdersForBlock,
     primitives::{OrderId, SimulatedOrder},
-    utils::{gen_uid, provider_factory_reopen::ConsistencyReopener, ProviderFactoryUnchecked},
+    utils::gen_uid,
 };
 use ahash::HashMap;
-use reth_provider::{StateProviderFactory, StateProvider};
+use reth_provider::StateProviderFactory;
 use simulation_job::SimulationJob;
 use std::{sync::{Arc, Mutex}, marker::PhantomData};
 use tokio::{sync::mpsc, task::JoinHandle};
@@ -50,7 +50,7 @@ pub struct CurrentSimulationContexts {
 
 #[derive(Debug)]
 pub struct OrderSimulationPool<P, DB> {
-    provider_factory: HashMap<u64, P>,
+    providers: HashMap<u64, P>,
     running_tasks: Arc<Mutex<Vec<JoinHandle<()>>>>,
     current_contexts: Arc<Mutex<CurrentSimulationContexts>>,
     worker_threads: Vec<std::thread::JoinHandle<()>>,
@@ -66,14 +66,13 @@ pub enum SimulatedOrderCommand {
     Cancellation(OrderId),
 }
 
-impl<P, DB> OrderSimulationPool<P, DB>
+impl<P> OrderSimulationPool<P>
 where
-    P: StateProviderFactory + ConsistencyReopener<DB> + ProviderFactoryUnchecked<DB> + Clone + 'static,
-    DB: reth_db::Database,
+    P: StateProviderFactory + Clone + 'static,
 {
-    pub fn new(provider_factory: HashMap<u64, P>, num_workers: usize, global_cancellation: CancellationToken) -> Self {
+    pub fn new(providers: HashMap<u64, P>, num_workers: usize, global_cancellation: CancellationToken) -> Self {
         let mut result = Self {
-            provider_factory,
+            providers,
             running_tasks: Arc::new(Mutex::new(Vec::new())),
             current_contexts: Arc::new(Mutex::new(CurrentSimulationContexts {
                 contexts: HashMap::default(),
@@ -82,13 +81,13 @@ where
             _phantom: PhantomData,
         };
         for i in 0..num_workers {
-            let ctx = Arc::clone(&result.current_contexts);
-            let provider = result.provider_factory.clone();
+            let ctx: Arc<Mutex<CurrentSimulationContexts>> = Arc::clone(&result.current_contexts);
+            let providers = result.providers.clone();
             let cancel = global_cancellation.clone();
             let handle = std::thread::Builder::new()
                 .name(format!("sim_thread:{}", i))
                 .spawn(move || {
-                    sim_worker::run_sim_worker(i, ctx, provider, cancel);
+                    sim_worker::run_sim_worker(i, ctx, providers, cancel);
                 })
                 .expect("Failed to start sim worker thread");
             result.worker_threads.push(handle);
@@ -110,10 +109,10 @@ where
         let (slot_sim_results_sender, slot_sim_results_receiver) = mpsc::channel(10_000);
     
         // Clone the original providers since we can't convert ProviderFactory<DB> to P
-        let providers = self.provider_factory.clone();
+        let providers = self.providers.clone();
     
         // Verify that all providers are consistent before proceeding
-        for (chain_id, factory) in self.provider_factory.iter() {
+        for (chain_id, factory) in self.providers.iter() {
             if let Err(err) = factory.check_consistency_and_reopen_if_needed(
                 ctx.chains[chain_id].block_env.number.to(),
             ) {

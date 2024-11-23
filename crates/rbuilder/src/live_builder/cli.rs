@@ -48,13 +48,13 @@ pub trait LiveBuilderConfig: Debug + DeserializeOwned + Sync {
     fn new_builder<P, DB>(
         &self,
         provider: P,
-        l2_provider_factories: Vec<P>,
+        l2_providers: Vec<P>,
         cancellation_token: CancellationToken,
     ) -> impl std::future::Future<Output = eyre::Result<LiveBuilder<P, DB, MevBoostSlotDataGenerator>>>
            + Send
     where
         DB: Database + Clone + 'static,
-        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ProviderFactoryUnchecked<DB> + ConsistencyReopener<DB> + Clone + 'static;
+        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static;
 
     /// Patch until we have a unified way of backtesting using the exact algorithms we use on the LiveBuilder.
     /// building_algorithm_name will come from the specific configuration.
@@ -65,7 +65,7 @@ pub trait LiveBuilderConfig: Debug + DeserializeOwned + Sync {
     ) -> eyre::Result<(Block, CachedReads)>
     where
         DB: Database + Clone + 'static,
-        P: DatabaseProviderFactory<DB> + StateProviderFactory + ConsistencyReopener<DB> + Clone + 'static;
+        P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static;
 }
 
 /// print_version_info func that will be called on command Cli::Version

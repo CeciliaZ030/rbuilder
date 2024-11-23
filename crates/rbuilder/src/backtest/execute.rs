@@ -6,7 +6,7 @@ use crate::{
     },
     live_builder::cli::LiveBuilderConfig,
     primitives::{OrderId, SimulatedOrder},
-    utils::{clean_extradata, Signer, provider_factory_reopen::ConsistencyReopener},
+    utils::{clean_extradata, Signer},
 };
 use ahash::{HashMap, HashSet};
 use alloy_primitives::{Address, U256};
@@ -55,16 +55,16 @@ pub struct BacktestBlockInput {
     pub sim_errors: Vec<OrderErr>,
 }
 
-pub fn backtest_prepare_ctx_for_block<P, DB>(
+pub fn backtest_prepare_ctx_for_block<P>(
     block_data: BlockData,
-    provider_factory: P,
+    provider: P,
     chain_spec: Arc<ChainSpec>,
     build_block_lag_ms: i64,
     blocklist: HashSet<Address>,
     builder_signer: Signer,
 ) -> eyre::Result<BacktestBlockInput>
 where
-    P: StateProviderFactory + ConsistencyReopener<DB> + Clone + 'static,
+    P: StateProviderFactory + Clone + 'static,
 {
     let orders = block_data
         .available_orders
@@ -90,7 +90,7 @@ where
     let mut provider_factories = HashMap::default();
     provider_factories.insert(chain_spec.chain.id(), provider_factory.clone());
     let (sim_orders, sim_errors) =
-        simulate_all_orders_with_sim_tree(provider_factories, &ctx, &orders, false)?;
+        simulate_all_orders_with_sim_tree(provider.clone(), &ctx, &orders, false)?;
     Ok(BacktestBlockInput {
         ctx,
         sim_orders,
@@ -101,7 +101,7 @@ where
 #[allow(clippy::too_many_arguments)]
 pub fn backtest_simulate_block<P, DB, ConfigType>(
     block_data: BlockData,
-    provider_factory: P,  // Keep this as is for now
+    provider: P,
     chain_spec: Arc<ChainSpec>,
     build_block_lag_ms: i64,
     builders_names: Vec<String>,
@@ -111,7 +111,7 @@ pub fn backtest_simulate_block<P, DB, ConfigType>(
 ) -> eyre::Result<BlockBacktestValue>
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ConsistencyReopener<DB> + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
     ConfigType: LiveBuilderConfig,
 {
     let BacktestBlockInput {
@@ -120,7 +120,7 @@ where
         sim_errors,
     } = backtest_prepare_ctx_for_block(
         block_data.clone(),
-        provider_factory.clone(),
+        provider.clone(),
         chain_spec.clone(),
         build_block_lag_ms,
         blocklist,
@@ -170,7 +170,7 @@ where
             builder_name: building_algorithm_name.clone(),
             sbundle_mergeabe_signers: sbundle_mergeabe_signers.to_vec(),
             sim_orders: &sim_orders,
-            provider_factory: providers,  // Pass the HashMap here
+            provider: providers,
             cached_reads,
         };
 

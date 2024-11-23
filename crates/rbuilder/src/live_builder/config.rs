@@ -292,13 +292,13 @@ impl LiveBuilderConfig for Config {
     }
     async fn new_builder<P, DB>(
         &self,
-        provider_factory: P,
-        l2_provider_factories: Vec<P>,
+        provider: P,
+        l2_providers: Vec<P>,
         cancellation_token: tokio_util::sync::CancellationToken,
     ) -> eyre::Result<super::LiveBuilder<P, DB, MevBoostSlotDataGenerator>>
     where
         DB: Database + Clone + 'static,
-        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + ProviderFactoryUnchecked<DB> + ConsistencyReopener<DB> + Clone + 'static,
+        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
     {
         let (sink_sealed_factory, relays) = self.l1_config.create_relays_sealed_sink_factory(
             self.base_config.chain_spec()?,
@@ -306,7 +306,7 @@ impl LiveBuilderConfig for Config {
         )?;
 
         let (wallet_balance_watcher, wallet_history) = WalletBalanceWatcher::new(
-            provider_factory.clone(),
+            provider.clone(),
             self.base_config.coinbase_signer()?.address.1,
             WALLET_INIT_HISTORY_SIZE,
         )?;
@@ -333,8 +333,8 @@ impl LiveBuilderConfig for Config {
                 cancellation_token,
                 sink_factory,
                 payload_event,
-                provider_factory,
-                l2_provider_factories
+                provider,
+                l2_providers
             )
             .await?;
         let root_hash_config = self.base_config.live_root_hash_config()?;
@@ -357,7 +357,7 @@ impl LiveBuilderConfig for Config {
         &self,
         building_algorithm_name: &str,
         input: BacktestSimulateBlockInput<'_, P>,
-    ) -> eyre::Result<(Block, SyncCachedReads)>
+    ) -> eyre::Result<(Block, CachedReads)>
     where
         DB: Database + Clone + 'static,
         P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
@@ -482,7 +482,7 @@ pub fn create_builders<P, DB>(
 ) -> Vec<Arc<dyn BlockBuildingAlgorithm<P, DB>>>
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + ProviderFactoryUnchecked<DB> + ConsistencyReopener<DB> + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
 {
     configs
         .into_iter()
@@ -505,7 +505,7 @@ fn create_builder<P, DB>(
 ) -> Arc<dyn BlockBuildingAlgorithm<P, DB>>
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + ProviderFactoryUnchecked<DB> + ConsistencyReopener<DB> + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
 {
     match cfg.builder {
         SpecificBuilderConfig::OrderingBuilder(order_cfg) => {

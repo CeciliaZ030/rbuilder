@@ -20,7 +20,6 @@ use reth::{
 };
 use reth_db::Database;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
-use revm_primitives::ChainAddress;
 use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 use tokio::sync::{broadcast, broadcast::error::TryRecvError};
@@ -130,7 +129,7 @@ where
         sorting: Sorting,
         sbundle_merger_selected_signers: &[Address],
     ) -> Self {
-        let nonce_cache = NonceCache::new(provider_factory, parent_block);
+        let nonce_cache = NonceCache::new(provider, parent_block);
 
         Self {
             nonce_cache,
@@ -202,7 +201,7 @@ pub trait UnfinishedBlockBuildingSink: std::fmt::Debug + Send + Sync {
 
 #[derive(Debug)]
 pub struct BlockBuildingAlgorithmInput<P> {
-    pub provider_factory: HashMap<u64, P>,
+    pub providers: HashMap<u64, P>,
     pub ctx: BlockBuildingContext,
     pub input: broadcast::Receiver<SimulatedOrderCommand>,
     /// output for the blocks
@@ -239,7 +238,7 @@ pub struct BacktestSimulateBlockInput<'a, P> {
     pub builder_name: String,
     pub sbundle_mergeabe_signers: Vec<Address>,
     pub sim_orders: &'a Vec<SimulatedOrder>,
-    pub provider_factory: HashMap<u64, P>,
+    pub providers: ProviderFactory<DB>,
     pub cached_reads: Option<CachedReads>,
 }
 

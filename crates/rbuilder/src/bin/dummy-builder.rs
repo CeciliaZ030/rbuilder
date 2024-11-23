@@ -90,7 +90,7 @@ async fn main() -> eyre::Result<()> {
             DEFAULT_INPUT_CHANNEL_BUFFER_SIZE,
         ),
         chain_chain_spec: chain_spec.clone(),
-        provider_factory: create_provider_factory(
+        provider: create_provider_factory(
             Some(&RETH_DB_PATH.parse::<PathBuf>().unwrap()),
             None,
             None,
@@ -104,6 +104,7 @@ async fn main() -> eyre::Result<()> {
         sink_factory: Box::new(TraceBlockSinkFactory {}),
         builders: vec![Arc::new(DummyBuildingAlgorithm::new(10))],
         layer2_info,
+        run_sparse_trie_prefetcher: false,
     };
 
     let ctrlc = tokio::spawn(async move {
@@ -199,7 +200,7 @@ impl DummyBuildingAlgorithm {
     fn build_block<P, DB>(
         &self,
         orders: Vec<SimulatedOrder>,
-        provider: HashMap<u64, P>,
+        providers: HashMap<u64, P>,
         ctx: &BlockBuildingContext,
     ) -> eyre::Result<Box<dyn BlockBuildingHelper>>
     where
@@ -207,7 +208,7 @@ impl DummyBuildingAlgorithm {
         P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
     {
         let mut block_building_helper = BlockBuildingHelperFromProvider::new(
-            provider.clone(),
+            providers.clone(),
             self.root_hash_task_pool.clone(),
             RootHashConfig::live_config(false, false),
             ctx.clone(),
@@ -238,7 +239,7 @@ where
     fn build_blocks(&self, input: BlockBuildingAlgorithmInput<P>) {
         if let Some(orders) = self.wait_for_orders(&input.cancel, input.input) {
             let block = self
-                .build_block(orders, input.provider_factory, &input.ctx)
+                .build_block(orders, input.provider, &input.ctx)
                 .unwrap();
             input.sink.new_block(block);
         }

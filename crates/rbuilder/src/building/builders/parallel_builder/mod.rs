@@ -36,7 +36,7 @@ use crate::{
 use alloy_primitives::Address;
 use reth::tasks::pool::BlockingTaskPool;
 use reth_db::database::Database;
-use reth_payload_builder::database::SyncCachedReads;
+use reth_payload_builder::database::CachedReads;
 use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 
 use self::{
@@ -109,7 +109,7 @@ where
             group_result_sender,
             input.cancel.clone(),
             input.ctx.clone(),
-            input.provider_factory.clone(),
+            input.provider.clone(),
             Arc::clone(&simulation_cache),
         );
 
@@ -120,7 +120,7 @@ where
             config,
             input.root_hash_config,
             Arc::clone(&best_results),
-            input.provider_factory.clone(),
+            input.provider.clone(),
             input.root_hash_task_pool.clone(),
             input.ctx.clone(),
             input.cancel.clone(),
@@ -267,7 +267,7 @@ fn run_order_intake(
 pub fn parallel_build_backtest<P, DB>(
     input: BacktestSimulateBlockInput<'_, P>,
     config: ParallelBuilderConfig,
-) -> Result<(Block, SyncCachedReads)>
+) -> Result<(Block, CachedReads)>
 where
     DB: Database + Clone + 'static,
     P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
@@ -301,7 +301,7 @@ where
         group_result_sender,
         CancellationToken::new(),
         input.ctx.clone(),
-        input.provider_factory.clone(),
+        input.provider.clone(),
         Arc::clone(&simulation_cache),
     );
 
@@ -313,7 +313,7 @@ where
     let results = conflict_resolving_pool.process_groups_backtest(
         groups,
         &input.ctx,
-        &input.provider_factory,
+        &input.provider,
         Arc::clone(&simulation_cache),
     );
     let processing_duration = processing_start.elapsed();
@@ -324,7 +324,7 @@ where
         &config,
         RootHashConfig::skip_root_hash(),
         Arc::clone(&best_results),
-        input.provider_factory.clone(),
+        input.provider.clone(),
         BlockingTaskPool::build()?,
         input.ctx.clone(),
         CancellationToken::new(),
@@ -411,7 +411,7 @@ where
 
     fn build_blocks(&self, input: BlockBuildingAlgorithmInput<P>) {
         let live_input = LiveBuilderInput {
-            provider_factory: input.provider_factory,
+            provider: input.provider,
             root_hash_config: self.root_hash_config.clone(),
             root_hash_task_pool: self.root_hash_task_pool.clone(),
             ctx: input.ctx.clone(),

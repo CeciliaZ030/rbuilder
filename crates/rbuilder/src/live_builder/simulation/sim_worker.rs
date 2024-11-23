@@ -5,9 +5,8 @@ use crate::{
     },
     live_builder::simulation::CurrentSimulationContexts,
     telemetry,
-    telemetry::add_sim_thread_utilisation_timings, utils::provider_factory_reopen::ConsistencyReopener,
+    telemetry::add_sim_thread_utilisation_timings,
 };
-use ahash::HashMap;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
 use reth_provider::StateProvider;
 use revm_primitives::ChainAddress;
@@ -23,14 +22,13 @@ use tracing::error;
 /// Function that continuously looks for a SimulationContext on ctx and when it finds one it polls its "request for simulation" channel (SimulationContext::requests).
 /// When the channel closes it goes back to waiting for a new SimulationContext.
 /// It's blocking so it's expected to run in its own thread.
-pub fn run_sim_worker<P, DB>(
+pub fn run_sim_worker<P>(
     worker_id: usize,
     ctx: Arc<Mutex<CurrentSimulationContexts>>,
-    provider_factory: HashMap<u64, P>,
+    providers: HashMap<u64, P>,
     global_cancellation: CancellationToken,
 ) where
-    P: StateProviderFactory + ConsistencyReopener<DB>,
-    DB: reth_db::Database,  // Added this trait bound
+    P: StateProviderFactory,
 {
     loop {
         if global_cancellation.is_cancelled() {

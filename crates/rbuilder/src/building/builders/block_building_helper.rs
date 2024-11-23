@@ -11,7 +11,7 @@ use reth::tasks::pool::BlockingTaskPool;
 use reth_db::Database;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
 use reth_primitives::format_ether;
-use reth_provider::{DatabaseProviderFactory, StateProviderFactory, StateProvider};
+use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 use revm_primitives::ChainAddress;
 use time::OffsetDateTime;
 use tokio_util::sync::CancellationToken;
@@ -104,7 +104,7 @@ where
     building_ctx: BlockBuildingContext,
     built_block_trace: BuiltBlockTrace,
     /// Needed to get the initial state and the final root hash calculation.
-    provider_factory: HashMap<u64, P>,
+    providers: HashMap<u64, P>,
     root_hash_task_pool: BlockingTaskPool,
     root_hash_config: RootHashConfig,
     /// Token to cancel in case of fatal error (if we believe that it's impossible to build for this block).
@@ -164,7 +164,7 @@ where
     /// - Estimate payout tx cost.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        provider_factory: HashMap<u64, P>,
+        provider: HashMap<u64, P>,
         root_hash_task_pool: BlockingTaskPool,
         root_hash_config: RootHashConfig,
         building_ctx: BlockBuildingContext,
@@ -178,10 +178,10 @@ where
 
         // @Maybe an issue - we have 2 db txs here (one for hash and one for finalize)
         let mut state_providers: HashMap<u64, Arc<dyn StateProvider>> = HashMap::default();
-        for (chain_id, provider_factory) in provider_factory.iter() {
+        for (chain_id, provider) in provider.iter() {
             state_providers.insert(
                 *chain_id,
-                provider_factory.history_by_block_hash(building_ctx.chains[chain_id].attributes.parent)?.into(),
+                provider.history_by_block_hash(building_ctx.chains[chain_id].attributes.parent)?.into(),
             );
             if *chain_id > origin_chain_id {
                 origin_chain_id = *chain_id;
@@ -221,7 +221,7 @@ where
             builder_name,
             building_ctx,
             built_block_trace: BuiltBlockTrace::new(),
-            provider_factory,
+            provider,
             root_hash_task_pool,
             root_hash_config,
             cancel_on_fatal_error,
@@ -386,21 +386,21 @@ where
         self.built_block_trace
             .verify_bundle_consistency(&self.building_ctx.chains[&self.origin_chain_id].blocklist)?;
 
-        let provider_factory = &self.provider_factory[&self.building_ctx.parent_chain_id];
+        let provider = &self.providers[&self.building_ctx.parent_chain_id];
 
         let sim_gas_used = self.partial_block.tracer.used_gas;
         let block_number = self.building_context().block();
         let finalized_block = match self.partial_block.clone().finalize(
             &mut self.block_state,
             &self.building_ctx,
-            provider_factory.clone(),
+            provider.clone(),
             self.root_hash_config,
             self.root_hash_task_pool,
         ) {
             Ok(finalized_block) => finalized_block,
             Err(err) => {
                 if err.is_consistent_db_view_err() {
-                    let last_block_number = provider_factory
+                    let last_block_number = provider
                         .last_block_number()
                         .unwrap_or_default();
                     debug!(
@@ -413,7 +413,7 @@ where
             }
         };
         self.built_block_trace.update_orders_sealed_at();
-        //self.built_block_trace.root_hash_time = finalized_block.root_hash_time;
+        self.built_block_trace.root_hash_time = finalized_block.root_hash_time;
 
         self.built_block_trace.finalize_time = start_time.elapsed();
 
@@ -442,7 +442,7 @@ where
         // let sim_gas_used = self.partial_block.tracer.used_gas;
         // let mut blocks = HashMap::default();
         // let mut cached_reads = CachedReads::default();
-        // for (chain_id, provider_factory) in self.provider_factory.iter() {
+        // for (chain_id, provider) in self.provider.iter() {
         //     // TODO Brecht: fix
         //     if *chain_id == self.building_ctx.parent_chain_id {
         //         continue;
@@ -454,14 +454,14 @@ where
         //     let finalized_block = match self.partial_block.clone().finalize(
         //         &mut self.block_state,
         //         &self.building_ctx,
-        //         provider_factory.clone(),
+        //         provider.clone(),
         //         self.root_hash_config.clone(),
         //         self.root_hash_task_pool.clone(),
         //     ) {
         //         Ok(finalized_block) => finalized_block,
         //         Err(err) => {
         //             if err.is_consistent_db_view_err() {
-        //                 let last_block_number = provider_factory
+        //                 let last_block_number = provider
         //                     .last_block_number()
         //                     .unwrap_or_default();
         //                 debug!(

@@ -1,4 +1,3 @@
-use ahash::HashMap;
 use alloy_primitives::utils::format_ether;
 use crossbeam_queue::SegQueue;
 use eyre::Result;
@@ -27,7 +26,7 @@ pub struct ConflictResolvingPool<P> {
     group_result_sender: std_mpsc::Sender<ConflictResolutionResultPerGroup>,
     cancellation_token: CancellationToken,
     ctx: BlockBuildingContext,
-    providers: HashMap<u64, P>,  // Dani: !?Changed from single provider to HashMap!?
+    provider: P,
     simulation_cache: Arc<SharedSimulationCache>,
 }
 
@@ -41,7 +40,7 @@ where
         group_result_sender: std_mpsc::Sender<ConflictResolutionResultPerGroup>,
         cancellation_token: CancellationToken,
         ctx: BlockBuildingContext,
-        providers: HashMap<u64, P>,
+        provider: P,
         simulation_cache: Arc<SharedSimulationCache>,
     ) -> Self {
         let thread_pool = ThreadPoolBuilder::new()
@@ -55,7 +54,7 @@ where
             group_result_sender,
             cancellation_token,
             ctx,
-            providers,
+            provider,
             simulation_cache,
         }
     }
@@ -63,7 +62,7 @@ where
     pub fn start(&self) {
         let task_queue = self.task_queue.clone();
         let cancellation_token = self.cancellation_token.clone();
-        let providers = self.providers.clone();
+        let provider = self.provider.clone();
         let group_result_sender = self.group_result_sender.clone();
         let simulation_cache = self.simulation_cache.clone();
         let ctx = self.ctx.clone();
@@ -75,7 +74,7 @@ where
                     if let Ok((task_id, result)) = Self::process_task(
                         task,
                         &ctx,
-                        &providers,  // Pass the HashMap
+                        &provider,
                         cancellation_token.clone(),
                         Arc::clone(&simulation_cache),
                     ) {
@@ -105,12 +104,12 @@ where
     pub fn process_task(
         task: ConflictTask,
         ctx: &BlockBuildingContext,
-        providers: &HashMap<u64, P>,  // Changed parameter type
+        provider: &P,
         cancellation_token: CancellationToken,
         simulation_cache: Arc<SharedSimulationCache>,
     ) -> Result<(GroupId, (ResolutionResult, ConflictGroup))> {
         let mut merging_context = ResolverContext::new(
-            providers.clone(),  // Pass the HashMap
+            provider.clone(),
             ctx.clone(),
             cancellation_token,
             None,
@@ -145,7 +144,7 @@ where
         &mut self,
         new_groups: Vec<ConflictGroup>,
         ctx: &BlockBuildingContext,
-        providers: &HashMap<u64, P>,  // Changed parameter type
+        provider: &P,
         simulation_cache: Arc<SharedSimulationCache>,
     ) -> Vec<(GroupId, (ResolutionResult, ConflictGroup))> {
         let mut results = Vec::new();
@@ -156,7 +155,7 @@ where
                 let result = Self::process_task(
                     task,
                     ctx,
-                    providers,  // Pass the HashMap
+                    provider,
                     CancellationToken::new(),
                     simulation_cache,
                 );
