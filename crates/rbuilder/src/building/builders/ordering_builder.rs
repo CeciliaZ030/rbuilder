@@ -5,7 +5,9 @@
 //! The described algorithm is ran continuously adding new SimulatedOrders (they arrive on real time!) on each iteration until we run out of time (slot ends).
 //! Sorting criteria are described on [`Sorting`].
 //! For some more details see [`OrderingBuilderConfig`]
+use crate::building::block_orders_from_sim_orders;
 use crate::roothash::RootHashConfig;
+use crate::utils::check_provider_factory_health;
 use crate::{
     building::{
         builders::{
@@ -21,8 +23,9 @@ use revm_primitives::ChainAddress;
 use reth::tasks::pool::BlockingTaskPool;
 use reth_db::database::Database;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
-use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
+use reth_provider::{DatabaseProviderFactory, StateProvider, StateProviderBox, StateProviderFactory};
 use serde::Deserialize;
+use tokio_util::sync::CancellationToken;
 use std::{
     marker::PhantomData,
     {sync::Arc, thread::sleep, time::{Duration, Instant},
@@ -68,7 +71,7 @@ where
     P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
 {
     let mut order_intake_consumer = OrderIntakeConsumer::new(
-        input.provider.clone(),
+        input.providers.clone(),
         input.input,
         input.ctx.chains.iter().map(|(chain_id, ctx)| (*chain_id, ctx.attributes.parent)).collect(),
         config.sorting,
@@ -76,7 +79,7 @@ where
     );
 
     let mut builder = OrderingBuilderContext::new(
-        input.provider.clone(),
+        input.providers.clone(),
         input.root_hash_task_pool,
         input.builder_name,
         input.ctx,
@@ -142,66 +145,52 @@ where
 {
     println!("backtest_simulate_block");
 
-    let mut providers = HashMap::default();
-    providers.insert(input.ctx.parent_chain_id, input.providers.clone());
+    let chain_id = input.ctx.parent_chain_id;
 
-    let mut ctxs = HashMap::default();
-    ctxs.insert(input.ctx.parent_chain_id, input.ctx.clone());
     let use_suggested_fee_recipient_as_coinbase = ordering_config.coinbase_payment;
+    let state_providers = input
+        .providers
+        .iter()
+        .map(|(chain_id, provider)| {
+            (
+                chain_id.clone(), 
+                provider.history_by_block_number(input.ctx.chains[chain_id].block_env.number.to::<u64>() - 1)
+                    .expect("Failed to get state provider by block number")
+            )
+        })
+        .collect::<HashMap<u64, StateProviderBox>>();
 
-    // Get the provider factory for parent chain first
-    let providers = input.providers.get(&input.ctx.parent_chain_id)
-        .ok_or_else(|| eyre::eyre!("No provider factory found for parent chain {}", input.ctx.parent_chain_id))?;
+    let block_orders = block_orders_from_sim_orders(
+        input.sim_orders,
+        ordering_config.sorting,
+        &state_providers,
+        &input.sbundle_mergeabe_signers,
+    )?;
+    let mut builder = OrderingBuilderContext::new(
+        input.providers.clone(),
+        BlockingTaskPool::build()?,
+        input.builder_name,
+        input.ctx.clone(),
+        ordering_config,
+        RootHashConfig::skip_root_hash(),
+    )
+    .with_cached_reads(input.cached_reads.unwrap_or_default());
+    let block_builder = builder.build_block(
+        block_orders,
+        use_suggested_fee_recipient_as_coinbase,
+        CancellationToken::new(),
+    )?;
 
-    let state_provider = providers
-        .history_by_block_number(input.ctx.chains[&input.ctx.parent_chain_id].block_env.number.to::<u64>() - 1)?;
-
-    let mut state_for_sim: HashMap<u64, Arc<dyn StateProvider>> = HashMap::default();
-
-    // Iterate through chains and set up state providers
-    for (chain_id, provider) in input.providers.iter() {
-        let state = provider.history_by_block_hash(input.ctx.chains[chain_id].attributes.parent)?;
-        state_for_sim.insert(*chain_id, Arc::from(state));
-    }
-    todo!()
-
-    // let mut state_for_sim: HashMap<u64, Arc<dyn StateProvider>> = HashMap::default();
-    // state_for_sim.insert(
-    //     160010,
-    //     Arc::<dyn StateProvider>::from(provider_factory.history_by_block_hash(current_sim_context.block_ctx[&chain_id].attributes.parent).expect("failed to open state provider")),
-    // );
-
-    // let block_orders = block_orders_from_sim_orders(
-    //     input.sim_orders,
-    //     ordering_config.sorting,
-    //     &state_provider,
-    //     &input.sbundle_mergeabe_signers,
-    // )?;
-    // let mut builder = OrderingBuilderContext::new(
-    //     provider_factories.clone(),
-    //     BlockingTaskPool::build()?,
-    //     input.builder_name,
-    //     ctxs,
-    //     ordering_config,
-    //     RootHashConfig::skip_root_hash(),
-    // )
-    // .with_cached_reads(input.cached_reads.unwrap_or_default());
-    // let block_builder = builder.build_block(
-    //     block_orders,
-    //     use_suggested_fee_recipient_as_coinbase,
-    //     CancellationToken::new(),
-    // )?;
-
-    // let payout_tx_value = if use_suggested_fee_recipient_as_coinbase {
-    //     None
-    // } else {
-    //     Some(block_builder.true_block_value()?)
-    // };
-    // let finalize_block_result = block_builder.finalize_block(payout_tx_value)?;
-    // Ok((
-    //     finalize_block_result.block,
-    //     finalize_block_result.cached_reads,
-    // ))
+    let payout_tx_value = if use_suggested_fee_recipient_as_coinbase {
+        None
+    } else {
+        Some(block_builder.true_block_value()?)
+    };
+    let finalize_block_result = block_builder.finalize_block(payout_tx_value)?;
+    Ok((
+        finalize_block_result.block,
+        finalize_block_result.cached_reads,
+    ))
 }
 
 #[derive(Debug)]
@@ -229,7 +218,7 @@ where
     P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
 {
     pub fn new(
-        provider_factory: HashMap<u64, P>,
+        providers: HashMap<u64, P>,
         root_hash_task_pool: BlockingTaskPool,
         builder_name: String,
         ctx: BlockBuildingContext,
@@ -237,7 +226,7 @@ where
         root_hash_config: RootHashConfig,
     ) -> Self {
         Self {
-            provider,
+            providers,
             root_hash_task_pool,
             builder_name,
             ctx,
@@ -279,7 +268,6 @@ where
         // Create a new ctx to remove builder_signer if necessary
         let new_ctx = self.ctx.clone();
         for (chain_id, provider_factory) in self.providers.iter() {
-            check_provider_factory_health(self.ctx.chains[chain_id].block(),  &provider_factory.provider_factory_unchecked())?;
             if use_suggested_fee_recipient_as_coinbase {
                 self.ctx.chains.get_mut(chain_id).unwrap().modify_use_suggested_fee_recipient_as_coinbase();
             }
@@ -414,7 +402,7 @@ where
 
     fn build_blocks(&self, input: BlockBuildingAlgorithmInput<P>) {
         let live_input = LiveBuilderInput {
-            provider: input.provider,
+            providers: input.providers.clone(),
             root_hash_config: self.root_hash_config.clone(),
             root_hash_task_pool: self.root_hash_task_pool.clone(),
             ctx: input.ctx.clone(),

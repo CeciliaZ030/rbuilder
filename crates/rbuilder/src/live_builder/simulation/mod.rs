@@ -16,7 +16,7 @@ use simulation_job::SimulationJob;
 use std::{sync::{Arc, Mutex}, marker::PhantomData};
 use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
-use tracing::{error, Instrument};
+use tracing::{error, info_span, Instrument};
 
 #[derive(Debug)]
 pub struct SlotOrderSimResults {
@@ -49,12 +49,11 @@ pub struct CurrentSimulationContexts {
 /// 4 IMPORTANT: When done with the simulations signal the provided block_cancellation.
 
 #[derive(Debug)]
-pub struct OrderSimulationPool<P, DB> {
+pub struct OrderSimulationPool<P> {
     providers: HashMap<u64, P>,
     running_tasks: Arc<Mutex<Vec<JoinHandle<()>>>>,
     current_contexts: Arc<Mutex<CurrentSimulationContexts>>,
     worker_threads: Vec<std::thread::JoinHandle<()>>,
-    _phantom: PhantomData<DB>, // Add PhantomData here
 }
 
 /// Result of a simulation.
@@ -78,7 +77,6 @@ where
                 contexts: HashMap::default(),
             })),
             worker_threads: Vec::new(),
-            _phantom: PhantomData,
         };
         for i in 0..num_workers {
             let ctx: Arc<Mutex<CurrentSimulationContexts>> = Arc::clone(&result.current_contexts);
@@ -111,18 +109,10 @@ where
         // Clone the original providers since we can't convert ProviderFactory<DB> to P
         let providers = self.providers.clone();
     
-        // Verify that all providers are consistent before proceeding
-        for (chain_id, factory) in self.providers.iter() {
-            if let Err(err) = factory.check_consistency_and_reopen_if_needed(
-                ctx.chains[chain_id].block_env.number.to(),
-            ) {
-                error!(?err, "Failed to check provider consistency");
-                // Continue with original provider in this case
-            }
-        }
-    
+        let providers = self.providers.clone();
         let current_contexts = Arc::clone(&self.current_contexts);
         let block_context: BlockContextId = gen_uid();
+        // let span = info_span!("sim_ctx", block = ctx.block_env.number.to::<u64>(), parent = ?ctx.attributes.parent);
     
         let handle = tokio::spawn(
             async move {

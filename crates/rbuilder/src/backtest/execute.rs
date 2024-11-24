@@ -87,10 +87,10 @@ where
         block_data.winning_bid_trace.proposer_fee_recipient,
         Some(builder_signer),
     );
-    let mut provider_factories = HashMap::default();
-    provider_factories.insert(chain_spec.chain.id(), provider_factory.clone());
+    let mut providers = HashMap::default();
+    providers.insert(chain_spec.chain.id(), provider.clone());
     let (sim_orders, sim_errors) =
-        simulate_all_orders_with_sim_tree(provider.clone(), &ctx, &orders, false)?;
+        simulate_all_orders_with_sim_tree(providers, &ctx, &orders, false)?;
     Ok(BacktestBlockInput {
         ctx,
         sim_orders,
@@ -163,14 +163,14 @@ where
     for building_algorithm_name in builders_names {
         // Create HashMap for the provider
         let mut providers = HashMap::default();
-        providers.insert(chain_spec.chain.id(), provider_factory.clone());
+        providers.insert(chain_spec.chain.id(), provider.clone());
 
         let input = BacktestSimulateBlockInput {
             ctx: ctx.clone(),
             builder_name: building_algorithm_name.clone(),
             sbundle_mergeabe_signers: sbundle_mergeabe_signers.to_vec(),
             sim_orders: &sim_orders,
-            provider: providers,
+            providers,
             cached_reads,
         };
 

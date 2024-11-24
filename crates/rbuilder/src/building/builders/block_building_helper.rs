@@ -11,7 +11,7 @@ use reth::tasks::pool::BlockingTaskPool;
 use reth_db::Database;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
 use reth_primitives::format_ether;
-use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
+use reth_provider::{DatabaseProviderFactory, StateProvider, StateProviderFactory};
 use revm_primitives::ChainAddress;
 use time::OffsetDateTime;
 use tokio_util::sync::CancellationToken;
@@ -164,7 +164,7 @@ where
     /// - Estimate payout tx cost.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        provider: HashMap<u64, P>,
+        providers: HashMap<u64, P>,
         root_hash_task_pool: BlockingTaskPool,
         root_hash_config: RootHashConfig,
         building_ctx: BlockBuildingContext,
@@ -178,7 +178,7 @@ where
 
         // @Maybe an issue - we have 2 db txs here (one for hash and one for finalize)
         let mut state_providers: HashMap<u64, Arc<dyn StateProvider>> = HashMap::default();
-        for (chain_id, provider) in provider.iter() {
+        for (chain_id, provider) in providers.iter() {
             state_providers.insert(
                 *chain_id,
                 provider.history_by_block_hash(building_ctx.chains[chain_id].attributes.parent)?.into(),
@@ -221,7 +221,7 @@ where
             builder_name,
             building_ctx,
             built_block_trace: BuiltBlockTrace::new(),
-            provider,
+            providers,
             root_hash_task_pool,
             root_hash_config,
             cancel_on_fatal_error,

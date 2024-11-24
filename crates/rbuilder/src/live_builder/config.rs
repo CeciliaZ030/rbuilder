@@ -19,9 +19,9 @@ use crate::{
     building::{
         builders::{
             ordering_builder::{OrderingBuilderConfig, OrderingBuildingAlgorithm},
-            parallel_builder::{
-                parallel_build_backtest, ParallelBuilderConfig, ParallelBuildingAlgorithm,
-            },
+            // parallel_builder::{
+            //     parallel_build_backtest, ParallelBuilderConfig, ParallelBuildingAlgorithm,
+            // },
             BacktestSimulateBlockInput, Block, BlockBuildingAlgorithm,
         },
         Sorting,
@@ -49,7 +49,7 @@ use eyre::Context;
 use reth::tasks::pool::BlockingTaskPool;
 use reth_chainspec::{Chain, ChainSpec, NamedChain};
 use reth_db::{Database, DatabaseEnv};
-use reth_payload_builder::database::{CachedReads, SyncCachedReads};
+use reth_payload_builder::database::SyncCachedReads as CachedReads;
 use reth_primitives::StaticFileSegment;
 use reth_provider::{
     DatabaseProviderFactory, HeaderProvider, StateProviderFactory, StaticFileProviderFactory,
@@ -75,7 +75,8 @@ pub const DEFAULT_MAX_CONCURRENT_SEALS: u64 = 1;
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(tag = "algo", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum SpecificBuilderConfig {
-    ParallelBuilder(ParallelBuilderConfig),
+    // TODO (Cecilia)
+    // ParallelBuilder(ParallelBuilderConfig),
     OrderingBuilder(OrderingBuilderConfig),
 }
 
@@ -367,9 +368,9 @@ impl LiveBuilderConfig for Config {
             SpecificBuilderConfig::OrderingBuilder(config) => {
                 crate::building::builders::ordering_builder::backtest_simulate_block(config, input)
             }
-            SpecificBuilderConfig::ParallelBuilder(config) => {
-                parallel_build_backtest(input, config)
-            }
+            // SpecificBuilderConfig::ParallelBuilder(config) => {
+            //     parallel_build_backtest(input, config)
+            // }
         }
     }
 }
@@ -517,15 +518,16 @@ where
                 cfg.name,
             ))
         }
-        SpecificBuilderConfig::ParallelBuilder(parallel_cfg) => {
-            Arc::new(ParallelBuildingAlgorithm::new(
-                root_hash_config.clone(),
-                root_hash_task_pool.clone(),
-                sbundle_mergeabe_signers.to_vec(),
-                parallel_cfg,
-                cfg.name,
-            ))
-        }
+        // TODO (Cecilia)
+        // SpecificBuilderConfig::ParallelBuilder(parallel_cfg) => {
+        //     Arc::new(ParallelBuildingAlgorithm::new(
+        //         root_hash_config.clone(),
+        //         root_hash_task_pool.clone(),
+        //         sbundle_mergeabe_signers.to_vec(),
+        //         parallel_cfg,
+        //         cfg.name,
+        //     ))
+        // }
     }
 }
 

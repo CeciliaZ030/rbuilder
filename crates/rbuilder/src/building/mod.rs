@@ -501,8 +501,8 @@ impl ExecutionError {
 }
 
 pub struct FinalizeResult {
-    pub sealed_block: SealedBlock,
-    pub cached_reads: CachedReads,
+    pub sealed_block: SealedBlock, // One block? or multiple blocks?
+    pub cached_reads: CachedReads, // SyncCachedReads
     // sidecars for all txs in SealedBlock
     pub txs_blob_sidecars: Vec<Arc<BlobTransactionSidecar>>,
     pub root_hash_time: Duration,

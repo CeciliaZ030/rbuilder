@@ -317,7 +317,10 @@ pub fn simulate_all_orders_with_sim_tree<P>(
     ctx: &BlockBuildingContext,
     orders: &[Order],
     randomize_insertion: bool,
-) -> Result<(Vec<SimulatedOrder>, Vec<OrderErr>), CriticalCommitOrderError> {
+) -> Result<(Vec<SimulatedOrder>, Vec<OrderErr>), CriticalCommitOrderError> 
+where
+    P: StateProviderFactory + Clone + 'static,
+{
     let parent_block_hashes = ctx.chains.iter().map(|(chain_id, ctx)| (*chain_id, ctx.attributes.parent)).collect();
     let mut sim_tree = SimTree::new(providers.clone(), parent_block_hashes);
 

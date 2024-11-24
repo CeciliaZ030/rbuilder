@@ -86,7 +86,7 @@ where
     pub sink_factory: Box<dyn UnfinishedBlockBuildingSinkFactory>,
     pub builders: Vec<Arc<dyn BlockBuildingAlgorithm<P, DB>>>,
     pub extra_rpc: RpcModule<()>,
-    pub layer2_info: Layer2Info<P, DB>,
+    pub layer2_info: Layer2Info<P>,
 }
 
 impl<P, DB, BlocksSourceType: SlotSource> LiveBuilder<P, DB, BlocksSourceType>

@@ -131,7 +131,7 @@ where
                     builder_name: builder_name.clone(),
                     sbundle_mergeabe_signers: sbundle_mergeabe_signers.clone(),
                     sim_orders: &sim_orders,
-                    provider_factory: providers,
+                    providers,
                     cached_reads: None,
                 };
                 let build_res = config.build_backtest_block(builder_name, input);

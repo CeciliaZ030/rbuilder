@@ -216,12 +216,16 @@ impl BaseConfig {
         P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone,
         SlotSourceType: SlotSource,
     {
-        let layer2_info = Layer2Info::<P, DB>::new(
-            l2_providers,
-            &self.l2_reth_datadirs,
-            &self.l2_ipc_paths,
-            &self.l2_server_ports,
-        ).await?;
+
+        // TODO(Cecilia): get this from exex
+        let layer2_info = tokio::runtime::Handle::current().block_on(
+            Layer2Info::<P>::new(
+                    l2_providers,
+                    &self.l2_reth_datadirs,
+                    &self.l2_ipc_paths,
+                    &self.l2_server_ports,
+                )
+        )?;
         Ok(LiveBuilder::<P, DB, SlotSourceType> {
             watchdog_timeout: self.watchdog_timeout(),
             error_storage_path: self.error_storage_path.clone(),

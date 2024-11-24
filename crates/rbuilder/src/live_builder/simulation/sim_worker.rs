@@ -7,6 +7,8 @@ use crate::{
     telemetry,
     telemetry::add_sim_thread_utilisation_timings,
 };
+use ahash::HashMap;
+use reth::blockchain_tree::chain;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
 use reth_provider::StateProvider;
 use revm_primitives::ChainAddress;
@@ -49,32 +51,15 @@ pub fn run_sim_worker<P>(
 
         println!("Brecht: simming 3");
 
-        // Create state providers directly instead of storing intermediate ProviderFactory
-        let mut state_providers: HashMap<u64, Arc<dyn StateProvider>> = HashMap::default();
-        for (chain_id, provider_factory) in provider_factory.iter() {
-            match provider_factory.check_consistency_and_reopen_if_needed(
-                current_sim_context.block_ctx.chains[chain_id].block_env.number.to(),
-            ) {
-                Ok(reopened_factory) => {
-                    // Immediately create the StateProvider from the reopened factory
-                    match reopened_factory.history_by_block_hash(
-                        current_sim_context.block_ctx.chains[chain_id].attributes.parent
-                    ) {
-                        Ok(provider) => {
-                            state_providers.insert(*chain_id, Arc::from(provider));
-                        },
-                        Err(err) => {
-                            error!(?err, "Error while creating state provider");
-                            continue;
-                        }
-                    }
-                },
-                Err(err) => {
-                    error!(?err, "Error while reopening provider factory");
-                    continue;
-                }
-            }
-        }
+        let state_providers = providers
+            .iter()
+            .map(|(chain_id, provider)| {
+                let provider =  provider
+                    .history_by_block_hash(current_sim_context.block_ctx.chains.get(chain_id).unwrap().attributes.parent)
+                    .unwrap();
+                (*chain_id, Arc::from(provider))
+            })
+            .collect::<HashMap<_, _>>();
 
         let mut cached_reads = CachedReads::default();
         let mut last_sim_finished = Instant::now();

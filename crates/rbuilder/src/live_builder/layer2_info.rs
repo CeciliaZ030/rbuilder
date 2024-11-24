@@ -43,32 +43,29 @@ where
 }
 
 #[derive(Debug)]
-pub struct GwynethNode<P, DB> {
+pub struct GwynethNode<P> {
     pub provider_factory: P,
     pub order_input_config: OrderInputConfig,
-    _phantom: PhantomData<DB>,
 }
 
 #[derive(Debug)]
-pub struct Layer2Info<P, DB> {
+pub struct Layer2Info<P> {
     pub ipc_providers: Arc<RwLock<HashMap<u64, (RootProvider<PubSubFrontend>, PathBuf)>>>,  // Changed to RwLock
     pub data_dirs: HashMap<u64, PathBuf>,
-    pub nodes: HashMap<u64, GwynethNode<P, DB>>,
-    _phantom: PhantomData<DB>,
+    pub nodes: HashMap<u64, GwynethNode<P>>,
 }
 
-impl<P, DB> PartialEq for Layer2Info<P, DB> {
+impl<P> PartialEq for Layer2Info<P> {
     fn eq(&self, other: &Self) -> bool {
         self.data_dirs == other.data_dirs
     }
 }
 
-impl<P, DB> Eq for Layer2Info<P, DB> {}
+impl<P> Eq for Layer2Info<P> {}
 
-impl<P, DB> Layer2Info<P, DB> 
+impl<P> Layer2Info<P> 
 where
-    DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+    P: StateProviderFactory + Clone + 'static,
 {
     pub async fn new(
         provider_factories: Vec<P>, 
@@ -90,7 +87,7 @@ where
             let chain_id = provider.get_chain_id().await?;
             providers.insert(chain_id, (provider, ipc_path.clone()));
             data_dirs_map.insert(chain_id, data_dir.clone());
-            nodes.insert(chain_id, GwynethNode::<P, DB> {
+            nodes.insert(chain_id, GwynethNode::<P> {
                     provider_factory: provider_factory.clone(),
                     order_input_config: OrderInputConfig::new(
                         true,
@@ -102,15 +99,13 @@ where
                         Duration::from_millis(50),
                         10_000,
                     ),
-                    _phantom: PhantomData,
-            });
+           });
         }
     
         Ok(Self {
             ipc_providers: Arc::new(RwLock::new(providers)), 
             data_dirs: data_dirs_map,
             nodes,
-            _phantom: PhantomData,
         })
     }
 

@@ -2,7 +2,7 @@
 pub mod block_building_helper;
 pub mod mock_block_building_helper;
 pub mod ordering_builder;
-pub mod parallel_builder;
+// pub mod parallel_builder;
 
 use crate::{
     building::{BlockBuildingContext, BlockOrders, BuiltBlockTrace, SimulatedOrderSink, Sorting},
@@ -21,6 +21,7 @@ use reth::{
 use reth_db::Database;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
 use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
+use revm_primitives::ChainAddress;
 use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 use tokio::sync::{broadcast, broadcast::error::TryRecvError};
 use tokio_util::sync::CancellationToken;
@@ -38,7 +39,7 @@ pub struct Block {
 
 #[derive(Debug)]
 pub struct LiveBuilderInput<P, DB> {
-    pub provider_factory: HashMap<u64, P>,
+    pub providers: HashMap<u64, P>,
     pub root_hash_config: RootHashConfig,
     pub root_hash_task_pool: BlockingTaskPool,
     pub ctx: BlockBuildingContext,
@@ -123,13 +124,13 @@ where
 {
     /// See [`ShareBundleMerger`] for sbundle_merger_selected_signers
     pub fn new(
-        provider_factory: HashMap<u64, P>,
+        providers: HashMap<u64, P>,
         orders: broadcast::Receiver<SimulatedOrderCommand>,
         parent_block: HashMap<u64, B256>,
         sorting: Sorting,
         sbundle_merger_selected_signers: &[Address],
     ) -> Self {
-        let nonce_cache = NonceCache::new(provider, parent_block);
+        let nonce_cache = NonceCache::new(providers, parent_block);
 
         Self {
             nonce_cache,
@@ -238,7 +239,7 @@ pub struct BacktestSimulateBlockInput<'a, P> {
     pub builder_name: String,
     pub sbundle_mergeabe_signers: Vec<Address>,
     pub sim_orders: &'a Vec<SimulatedOrder>,
-    pub providers: ProviderFactory<DB>,
+    pub providers: HashMap<u64, P>,
     pub cached_reads: Option<CachedReads>,
 }
 
