@@ -664,7 +664,10 @@ impl Order {
             Order::Bundle(bundle) => bundle.nonces(),
             Order::Tx(tx) => vec![Nonce {
                 nonce: tx.tx_with_blobs.tx.nonce(),
-                address: ChainAddress(tx.tx_with_blobs.tx.chain_id().unwrap(), tx.tx_with_blobs.tx.signer()),
+                address: ChainAddress(
+                    tx.tx_with_blobs.tx.chain_id().unwrap(),
+                    tx.tx_with_blobs.tx.signer(),
+                ),
                 optional: false,
             }],
             Order::ShareBundle(bundle) => bundle.nonces(),

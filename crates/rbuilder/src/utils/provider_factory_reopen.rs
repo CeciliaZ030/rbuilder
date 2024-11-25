@@ -34,12 +34,18 @@ pub struct ProviderFactoryReopener<DB> {
 }
 
 pub trait ConsistencyReopener<DB> {
-    fn check_consistency_and_reopen_if_needed(&self, block_number: u64) -> eyre::Result<ProviderFactory<DB>>;
+    fn check_consistency_and_reopen_if_needed(
+        &self,
+        block_number: u64,
+    ) -> eyre::Result<ProviderFactory<DB>>;
 }
 
 // Implement for ProviderFactoryReopener
 impl<DB: Database + Clone> ConsistencyReopener<DB> for ProviderFactoryReopener<DB> {
-    fn check_consistency_and_reopen_if_needed(&self, block_number: u64) -> eyre::Result<ProviderFactory<DB>> {
+    fn check_consistency_and_reopen_if_needed(
+        &self,
+        block_number: u64,
+    ) -> eyre::Result<ProviderFactory<DB>> {
         // Call the existing implementation and just return Ok(()) since we don't need the provider
         return Ok(self.check_consistency_and_reopen_if_needed()?);
     }

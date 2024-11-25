@@ -88,7 +88,10 @@ impl TestSetup {
 
         // block state
         let state_provider = self.test_chain.provider_factory().latest()?;
-        let mut block_state = BlockState::new(state_provider, self.test_chain.block_building_context().parent_chain_id);
+        let mut block_state = BlockState::new(
+            state_provider,
+            self.test_chain.block_building_context().parent_chain_id,
+        );
         let mut db_ref = block_state.new_db_ref();
 
         // execute transaction
@@ -104,7 +107,11 @@ impl TestSetup {
                         .initialized_cfg
                         .cfg_env
                         .clone(),
-                    block: self.test_chain.parant_chain_building_context().block_env.clone(),
+                    block: self
+                        .test_chain
+                        .parant_chain_building_context()
+                        .block_env
+                        .clone(),
                     tx: tx_env,
                 }))
                 .with_external_context(&mut inspector)

@@ -2,7 +2,8 @@ use ahash::HashMap;
 use alloy_primitives::{Address, B256, U256};
 use reth_primitives::TransactionSignedEcRecovered;
 use revm::{
-    interpreter::{opcode, CallInputs, CallOutcome, Interpreter}, EvmContext, Inspector, SyncDatabase,
+    interpreter::{opcode, CallInputs, CallOutcome, Interpreter},
+    EvmContext, Inspector, SyncDatabase,
 };
 use revm_inspectors::access_list::AccessListInspector;
 use revm_primitives::ChainAddress;
@@ -135,7 +136,8 @@ where
             opcode::BALANCE => {
                 if let Ok(addr) = interpreter.stack().peek(0) {
                     let addr = Address::from_word(B256::from(addr.to_be_bytes()));
-                    self.next_step_action = NextStepAction::ReadBalanceResult(ChainAddress(interpreter.chain_id, addr));
+                    self.next_step_action =
+                        NextStepAction::ReadBalanceResult(ChainAddress(interpreter.chain_id, addr));
                 }
             }
             opcode::SELFBALANCE => {
@@ -171,7 +173,9 @@ where
         outcome: revm::interpreter::CreateOutcome,
     ) -> revm::interpreter::CreateOutcome {
         if let Some(addr) = outcome.address {
-            self.used_state_trace.created_contracts.push(ChainAddress(ctx.env.cfg.chain_id, addr));
+            self.used_state_trace
+                .created_contracts
+                .push(ChainAddress(ctx.env.cfg.chain_id, addr));
         }
         outcome
     }

@@ -8,10 +8,7 @@ pub mod relay_epoch_cache;
 use crate::{
     beacon_api_client::Client,
     live_builder::{
-        payload_events::{
-            payload_source::PayloadSourceMuxer,
-            relay_epoch_cache::{SlotData},
-        },
+        payload_events::{payload_source::PayloadSourceMuxer, relay_epoch_cache::SlotData},
         SlotSource,
     },
     primitives::mev_boost::{MevBoostRelay, MevBoostRelayID},
@@ -134,11 +131,11 @@ impl MevBoostSlotDataGenerator {
                 }
 
                 /*let (slot_data, relays) =
-                    if let Some(res) = relays.slot_data(event.data.proposal_slot).await {
-                        res
-                    } else {
-                        continue;
-                    };*/
+                if let Some(res) = relays.slot_data(event.data.proposal_slot).await {
+                    res
+                } else {
+                    continue;
+                };*/
 
                 let slot_data = SlotData {
                     fee_recipient: address!("8943545177806ED17B9F23F0a21ee5948eCaa776"),

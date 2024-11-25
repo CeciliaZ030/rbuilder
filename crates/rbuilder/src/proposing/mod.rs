@@ -1,4 +1,3 @@
-
 use alloy_network::{EthereumWallet, TransactionBuilder};
 use alloy_provider::{Provider, ProviderBuilder};
 use alloy_rlp::{Decodable, Encodable};
@@ -6,15 +5,15 @@ use alloy_signer_local::PrivateKeySigner;
 //use alloy_sol_types::{sol, SolCall};
 use eyre::Result;
 //use revm_primitives::{Address, B256, U256};
-use alloy_primitives::{B256, U256, Address};
+use alloy_primitives::{Address, B256, U256};
 use reth_primitives::TransactionSigned;
 //use revm_primitives::address;
 use url::Url;
 //use crate::mev_boost::{SubmitBlockRequest};
 //use alloy_rpc_types_engine::{ExecutionPayload};
+use alloy_network::eip2718::Encodable2718;
 use alloy_rpc_types_engine::ExecutionPayload;
 use alloy_sol_types::{sol, SolCall, SolType};
-use alloy_network::eip2718::Encodable2718;
 use std::str::FromStr;
 
 use alloy_rpc_types::{TransactionInput, TransactionRequest};
@@ -75,7 +74,9 @@ impl BlockProposer {
         // Create the transaction data
         let (meta, num_txs) = self.create_propose_block_tx_data(&execution_payload)?;
 
-        let propose_data = Rollup::proposeBlockCall { data: vec![meta.clone()] };
+        let propose_data = Rollup::proposeBlockCall {
+            data: vec![meta.clone()],
+        };
         let propose_data = propose_data.abi_encode();
 
         // if num_txs == 1 {
@@ -95,13 +96,19 @@ impl BlockProposer {
 
         // Sign the transaction
         let chain_id = provider.get_chain_id().await?;
-        let nonce = provider.get_transaction_count(signer.address()).await.unwrap();
+        let nonce = provider
+            .get_transaction_count(signer.address())
+            .await
+            .unwrap();
 
         // Build a transaction to send 100 wei from Alice to Bob.
         // The `from` field is automatically filled to the first signer's address (Alice).
         let tx = TransactionRequest::default()
             .with_to(Address::from_str(&self.contract_address).unwrap())
-            .input(TransactionInput {input: Some(propose_data.into()), data: None })
+            .input(TransactionInput {
+                input: Some(propose_data.into()),
+                data: None,
+            })
             .with_nonce(nonce)
             .with_chain_id(chain_id)
             .with_value(U256::from(0))
@@ -133,17 +140,16 @@ impl BlockProposer {
     }
 
     // The logic to create the transaction (call)data for proposing the block
-    fn create_propose_block_tx_data(&self, execution_payload: &ExecutionPayload) -> Result<(BlockMetadata, usize)> {
+    fn create_propose_block_tx_data(
+        &self,
+        execution_payload: &ExecutionPayload,
+    ) -> Result<(BlockMetadata, usize)> {
         let execution_payload = match execution_payload {
-            ExecutionPayload::V2(payload) => {
-                &payload.payload_inner
-            },
-            ExecutionPayload::V3(payload) => {
-                &payload.payload_inner.payload_inner
-            },
+            ExecutionPayload::V2(payload) => &payload.payload_inner,
+            ExecutionPayload::V3(payload) => &payload.payload_inner.payload_inner,
             _ => {
                 println!("Unsupported ExecutionPayload version");
-                return Err(eyre::eyre!("Unsupported ExecutionPayload version"))
+                return Err(eyre::eyre!("Unsupported ExecutionPayload version"));
             }
         };
 
@@ -157,7 +163,10 @@ impl BlockProposer {
         let tx_list_hash = B256::from(alloy_primitives::keccak256(&tx_list));
 
         println!("proposing for block: {}", execution_payload.block_number);
-        println!("number of transactions: {}", execution_payload.transactions.len());
+        println!(
+            "number of transactions: {}",
+            execution_payload.transactions.len()
+        );
         println!("transactions: {:?}", execution_payload.transactions);
         println!("tx list: {:?}", tx_list);
 

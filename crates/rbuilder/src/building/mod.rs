@@ -129,12 +129,19 @@ impl BlockBuildingContext {
     ) -> Self {
         let parent_chain_id = chain_spec.chain.id();
         let mut chains = HashMap::default();
-        chains.insert(parent_chain_id, ChainBlockBuildingContext::from_onchain_block(onchain_block, chain_spec, spec_id, blocklist, coinbase, suggested_fee_recipient, builder_signer.clone()));
-        Self::from_attributes(
+        chains.insert(
             parent_chain_id,
-            chains,
-            builder_signer,
-        )
+            ChainBlockBuildingContext::from_onchain_block(
+                onchain_block,
+                chain_spec,
+                spec_id,
+                blocklist,
+                coinbase,
+                suggested_fee_recipient,
+                builder_signer.clone(),
+            ),
+        );
+        Self::from_attributes(parent_chain_id, chains, builder_signer)
     }
 
     /// Useless BlockBuildingContext for testing in contexts where we can't avoid having a BlockBuildingContext.
@@ -163,12 +170,23 @@ impl BlockBuildingContext {
     }
 
     pub fn modify_use_suggested_fee_recipient_as_coinbase(&mut self) {
-        self.chains.get_mut(&self.parent_chain_id).unwrap().block_env.coinbase = ChainAddress(self.chains[&self.parent_chain_id].chain_spec.chain.id(), self.chains[&self.parent_chain_id].attributes.suggested_fee_recipient);
+        self.chains
+            .get_mut(&self.parent_chain_id)
+            .unwrap()
+            .block_env
+            .coinbase = ChainAddress(
+            self.chains[&self.parent_chain_id].chain_spec.chain.id(),
+            self.chains[&self.parent_chain_id]
+                .attributes
+                .suggested_fee_recipient,
+        );
     }
 
     pub fn timestamp(&self) -> OffsetDateTime {
-        OffsetDateTime::from_unix_timestamp(self.chains[&self.parent_chain_id].attributes.timestamp as i64)
-            .expect("Payload attributes timestamp")
+        OffsetDateTime::from_unix_timestamp(
+            self.chains[&self.parent_chain_id].attributes.timestamp as i64,
+        )
+        .expect("Payload attributes timestamp")
     }
 
     pub fn block(&self) -> u64 {
@@ -176,7 +194,13 @@ impl BlockBuildingContext {
     }
 
     pub fn coinbase_is_suggested_fee_recipient(&self) -> bool {
-        self.chains[&self.parent_chain_id].block_env.coinbase == ChainAddress(self.chains[&self.parent_chain_id].chain_spec.chain.id(), self.chains[&self.parent_chain_id].attributes.suggested_fee_recipient)
+        self.chains[&self.parent_chain_id].block_env.coinbase
+            == ChainAddress(
+                self.chains[&self.parent_chain_id].chain_spec.chain.id(),
+                self.chains[&self.parent_chain_id]
+                    .attributes
+                    .suggested_fee_recipient,
+            )
     }
 }
 
@@ -196,7 +220,8 @@ impl ChainBlockBuildingContext {
         let attributes = EthPayloadBuilderAttributes::try_new(
             attributes.data.parent_block_hash,
             attributes.data.payload_attributes.clone(),
-        ).expect("PayloadBuilderAttributes::try_new");
+        )
+        .expect("PayloadBuilderAttributes::try_new");
 
         let (initialized_cfg, mut block_env) = attributes.cfg_and_block_env(&chain_spec, parent);
         block_env.coinbase = signer.address;
@@ -348,7 +373,10 @@ impl ChainBlockBuildingContext {
     }
 
     pub fn modify_use_suggested_fee_recipient_as_coinbase(&mut self) {
-        self.block_env.coinbase = ChainAddress(self.chain_spec.chain.id(), self.attributes.suggested_fee_recipient);
+        self.block_env.coinbase = ChainAddress(
+            self.chain_spec.chain.id(),
+            self.attributes.suggested_fee_recipient,
+        );
     }
 
     pub fn timestamp(&self) -> OffsetDateTime {
@@ -361,7 +389,11 @@ impl ChainBlockBuildingContext {
     }
 
     pub fn coinbase_is_suggested_fee_recipient(&self) -> bool {
-        self.block_env.coinbase == ChainAddress(self.chain_spec.chain.id(), self.attributes.suggested_fee_recipient)
+        self.block_env.coinbase
+            == ChainAddress(
+                self.chain_spec.chain.id(),
+                self.attributes.suggested_fee_recipient,
+            )
     }
 }
 
@@ -660,7 +692,10 @@ impl<Tracer: SimulationTracer> PartialBlock<Tracer> {
             target_ctx.block_env.basefee,
             builder_signer,
             nonce,
-            ChainAddress(target_ctx.chain_spec.chain.id(), target_ctx.attributes.suggested_fee_recipient),
+            ChainAddress(
+                target_ctx.chain_spec.chain.id(),
+                target_ctx.attributes.suggested_fee_recipient,
+            ),
             gas_limit,
             value.to(),
         )?;

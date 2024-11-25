@@ -1,9 +1,9 @@
 pub mod base_config;
-pub mod layer2_info;
 pub mod block_output;
 pub mod building;
 pub mod cli;
 pub mod config;
+pub mod layer2_info;
 pub mod order_input;
 pub mod payload_events;
 pub mod simulation;
@@ -12,7 +12,7 @@ pub mod watchdog;
 use crate::{
     building::{
         builders::{BlockBuildingAlgorithm, UnfinishedBlockBuildingSinkFactory},
-        BlockBuildingContext, ChainBlockBuildingContext
+        BlockBuildingContext, ChainBlockBuildingContext,
     },
     live_builder::{
         order_input::{start_orderpool_jobs, OrderInputConfig},
@@ -34,12 +34,12 @@ use reth::{primitives::Header, providers::HeaderProvider};
 use reth_chainspec::ChainSpec;
 use reth_db::Database;
 use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
-use std::{fmt::Debug, thread::sleep};
 use std::{cmp::min, path::PathBuf, sync::Arc, time::Duration};
+use std::{fmt::Debug, thread::sleep};
 use time::OffsetDateTime;
 use tokio::{sync::mpsc, task::spawn_blocking};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info, warn, error};
+use tracing::{debug, error, info, warn};
 
 use layer2_info::Layer2Info;
 
@@ -250,7 +250,10 @@ where
                 println!("chain spec chain id: {}", chain_spec.chain.id());
                 if chain_spec.chain.id() != chain_id {
                     println!("updating ctx for {}", chain_id);
-                    let latest_block = self.layer2_info.get_latest_block(chain_id, BlockId::Number(BlockNumberOrTag::Latest)).await?;
+                    let latest_block = self
+                        .layer2_info
+                        .get_latest_block(chain_id, BlockId::Number(BlockNumberOrTag::Latest))
+                        .await?;
                     if let Some(latest_block) = latest_block {
                         block_ctx.attributes.parent = latest_block.header.hash;
                         block_ctx.block_env.number = U256::from(latest_block.header.number + 1);
@@ -260,7 +263,10 @@ where
                     chain_spec.chain = Chain::from(chain_id);
                     block_ctx.chain_spec = chain_spec.into();
                 }
-                println!("Latest block hash for {} is {}", chain_id, block_ctx.attributes.parent);
+                println!(
+                    "Latest block hash for {} is {}",
+                    chain_id, block_ctx.attributes.parent
+                );
                 chains.insert(chain_id, block_ctx);
             }
 

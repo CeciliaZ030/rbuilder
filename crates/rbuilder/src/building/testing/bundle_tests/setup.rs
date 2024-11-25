@@ -208,9 +208,12 @@ impl TestSetup {
     }
     fn try_commit_order(&mut self) -> eyre::Result<Result<ExecutionResult, ExecutionError>> {
         let state_provider = self.test_chain.provider_factory().latest()?;
-        let mut block_state = BlockState::new(state_provider, self.test_chain.block_building_context().parent_chain_id)
-            .with_bundle_state(self.bundle_state.take().unwrap_or_default())
-            .with_cached_reads(self.cached_reads.take().unwrap_or_default());
+        let mut block_state = BlockState::new(
+            state_provider,
+            self.test_chain.block_building_context().parent_chain_id,
+        )
+        .with_bundle_state(self.bundle_state.take().unwrap_or_default())
+        .with_cached_reads(self.cached_reads.take().unwrap_or_default());
 
         let sim_order = SimulatedOrder {
             order: self.order_builder.build_order(),

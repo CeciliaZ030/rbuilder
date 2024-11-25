@@ -51,7 +51,10 @@ impl BestBlockCell {
             .unwrap_or_default();
         //println!("compare_and_update: {:?} > {:?}", block.trace.bid_value, old_value);
         if block.trace.bid_value > old_value {
-            println!("best_block update: {:?} > {:?}", block.trace.bid_value, old_value);
+            println!(
+                "best_block update: {:?} > {:?}",
+                block.trace.bid_value, old_value
+            );
             *best_block = Some(block);
             self.block_notify.notify_one();
         }

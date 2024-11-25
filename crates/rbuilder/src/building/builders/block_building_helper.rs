@@ -1,7 +1,7 @@
 use std::{
     cmp::max,
-    sync::Arc,
     marker::PhantomData,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -19,10 +19,9 @@ use tracing::{debug, error, trace};
 
 use crate::{
     building::{
-        tracers::GasUsedSimulationTracer, BlockBuildingContext,
-        BlockState, BuiltBlockTrace, BuiltBlockTraceError, CriticalCommitOrderError,
-        EstimatePayoutGasErr, ExecutionError, ExecutionResult, FinalizeError, FinalizeResult,
-        PartialBlock, Sorting,
+        tracers::GasUsedSimulationTracer, BlockBuildingContext, BlockState, BuiltBlockTrace,
+        BuiltBlockTraceError, CriticalCommitOrderError, EstimatePayoutGasErr, ExecutionError,
+        ExecutionResult, FinalizeError, FinalizeResult, PartialBlock, Sorting,
     },
     primitives::SimulatedOrder,
     roothash::RootHashConfig,
@@ -181,7 +180,9 @@ where
         for (chain_id, provider) in providers.iter() {
             state_providers.insert(
                 *chain_id,
-                provider.history_by_block_hash(building_ctx.chains[chain_id].attributes.parent)?.into(),
+                provider
+                    .history_by_block_hash(building_ctx.chains[chain_id].attributes.parent)?
+                    .into(),
             );
             if *chain_id > origin_chain_id {
                 origin_chain_id = *chain_id;
@@ -189,14 +190,19 @@ where
         }
         //println!("origin_chain_id: {}", origin_chain_id);
 
-        let fee_recipient_balance_start = state_providers[&building_ctx.chains[&origin_chain_id].chain_spec.chain.id()]
-            .account_balance(building_ctx.chains[&origin_chain_id].attributes.suggested_fee_recipient)?
+        let fee_recipient_balance_start = state_providers
+            [&building_ctx.chains[&origin_chain_id].chain_spec.chain.id()]
+            .account_balance(
+                building_ctx.chains[&origin_chain_id]
+                    .attributes
+                    .suggested_fee_recipient,
+            )?
             .unwrap_or_default();
         let mut partial_block = PartialBlock::new(discard_txs, enforce_sorting)
             .with_tracer(GasUsedSimulationTracer::default());
         // Brecht: create local state for block building on top of latest blockchain state
-        let mut block_state =
-            BlockState::new_arc(state_providers).with_cached_reads(cached_reads.unwrap_or_default());
+        let mut block_state = BlockState::new_arc(state_providers)
+            .with_cached_reads(cached_reads.unwrap_or_default());
         partial_block
             .pre_block_call(&building_ctx, &mut block_state)
             .map_err(|_| BlockBuildingHelperError::PreBlockCallFailed)?;
@@ -255,7 +261,10 @@ where
         );
 
         trace!(
-            block = building_ctx.chains[&building_ctx.parent_chain_id].block_env.number.to::<u64>(),
+            block = building_ctx.chains[&building_ctx.parent_chain_id]
+                .block_env
+                .number
+                .to::<u64>(),
             build_time_mus = built_block_trace.fill_time.as_micros(),
             finalize_time_mus = built_block_trace.finalize_time.as_micros(),
             profit = format_ether(built_block_trace.bid_value),
@@ -302,9 +311,12 @@ where
         }
         // Since some extra money might arrived directly the suggested_fee_recipient (when suggested_fee_recipient != coinbase)
         // we check the fee_recipient delta and make our bid include that! This is supposed to be what the relay will check.
-        let fee_recipient_balance_after = self
-            .block_state
-            .balance(ChainAddress(self.origin_chain_id, self.building_ctx.chains[&self.origin_chain_id].attributes.suggested_fee_recipient))?;
+        let fee_recipient_balance_after = self.block_state.balance(ChainAddress(
+            self.origin_chain_id,
+            self.building_ctx.chains[&self.origin_chain_id]
+                .attributes
+                .suggested_fee_recipient,
+        ))?;
         let fee_recipient_balance_diff = fee_recipient_balance_after
             .checked_sub(self._fee_recipient_balance_start)
             .unwrap_or_default();
@@ -376,15 +388,18 @@ where
         payout_tx_value: Option<U256>,
     ) -> Result<FinalizeBlockResult, BlockBuildingHelperError> {
         //println!("finalize_block");
-        if payout_tx_value.is_some() && self.building_ctx.chains[&self.origin_chain_id].coinbase_is_suggested_fee_recipient() {
+        if payout_tx_value.is_some()
+            && self.building_ctx.chains[&self.origin_chain_id].coinbase_is_suggested_fee_recipient()
+        {
             return Err(BlockBuildingHelperError::PayoutTxNotAllowed);
         }
         let start_time = Instant::now();
 
         self.finalize_block_execution(payout_tx_value)?;
         // This could be moved outside of this func (pre finalize) since I don´t think the payout tx can change much.
-        self.built_block_trace
-            .verify_bundle_consistency(&self.building_ctx.chains[&self.origin_chain_id].blocklist)?;
+        self.built_block_trace.verify_bundle_consistency(
+            &self.building_ctx.chains[&self.origin_chain_id].blocklist,
+        )?;
 
         let provider = &self.providers[&self.building_ctx.parent_chain_id];
 
@@ -400,9 +415,7 @@ where
             Ok(finalized_block) => finalized_block,
             Err(err) => {
                 if err.is_consistent_db_view_err() {
-                    let last_block_number = provider
-                        .last_block_number()
-                        .unwrap_or_default();
+                    let last_block_number = provider.last_block_number().unwrap_or_default();
                     debug!(
                         block_number,
                         last_block_number, "Can't build on this head, cancelling slot"
@@ -432,7 +445,12 @@ where
             builder_name: self.builder_name.clone(),
         };
 
-        block.sealed_block.body = self.partial_block.executed_tx.into_iter().map(|t| t.tx.into()).collect();
+        block.sealed_block.body = self
+            .partial_block
+            .executed_tx
+            .into_iter()
+            .map(|t| t.tx.into())
+            .collect();
 
         Ok(FinalizeBlockResult {
             block,

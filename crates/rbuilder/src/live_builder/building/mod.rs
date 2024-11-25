@@ -15,7 +15,7 @@ use reth_db::Database;
 use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, trace, error};
+use tracing::{debug, error, trace};
 
 use super::{
     order_input::{
@@ -113,11 +113,13 @@ where
         let builder_sink = self.sink_factory.create_sink(slot_data, cancel.clone());
         let (broadcast_input, _) = broadcast::channel(10_000);
 
-
         for builder in self.builders.iter() {
             let builder_name = builder.name();
 
-            debug!(/* block = block_number,  */builder_name, "Spawning builder job");
+            debug!(
+                /* block = block_number,  */ builder_name,
+                "Spawning builder job"
+            );
             let input = BlockBuildingAlgorithmInput::<P> {
                 providers: self.providers.clone(),
                 ctx: ctx.clone(),
@@ -133,13 +135,13 @@ where
 
         if self.run_sparse_trie_prefetcher {
             let input = broadcast_input.subscribe();
-            
+
             // Spawn a prefetcher task for each chain
             for (chain_id, provider) in self.providers.clone() {
                 let chain_input = input.resubscribe();
                 let chain_cancel = cancel.clone();
                 let chain_ctx = ctx.clone();
-                
+
                 tokio::task::spawn_blocking(move || {
                     run_trie_prefetcher(
                         chain_ctx.chains[&chain_id].attributes.parent,

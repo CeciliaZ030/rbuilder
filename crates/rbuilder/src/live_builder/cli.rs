@@ -15,7 +15,9 @@ use crate::{
         base_config::load_config_toml_and_env, payload_events::MevBoostSlotDataGenerator,
     },
     telemetry,
-    utils::{build_info::Version, ProviderFactoryUnchecked, provider_factory_reopen::ConsistencyReopener},
+    utils::{
+        build_info::Version, provider_factory_reopen::ConsistencyReopener, ProviderFactoryUnchecked,
+    },
 };
 
 use super::{base_config::BaseConfig, LiveBuilder};
@@ -54,8 +56,8 @@ pub trait LiveBuilderConfig: Debug + DeserializeOwned + Sync {
            + Send
     where
         DB: Database + Clone + 'static,
-        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static;
-
+        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone;
+        
     /// Patch until we have a unified way of backtesting using the exact algorithms we use on the LiveBuilder.
     /// building_algorithm_name will come from the specific configuration.
     fn build_backtest_block<P, DB>(
@@ -107,7 +109,9 @@ where
     .await?;
     let provider = config.base_config().create_provider_factory()?;
     let l2_providers = config.base_config().gwyneth_provider_factories()?;
-    let builder = config.new_builder(provider, l2_providers, cancel.clone()).await?;
+    let builder = config
+        .new_builder(provider, l2_providers, cancel.clone())
+        .await?;
 
     let ctrlc = tokio::spawn(async move {
         ctrl_c().await.unwrap_or_default();

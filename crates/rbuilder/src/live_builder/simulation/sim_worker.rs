@@ -11,8 +11,8 @@ use ahash::HashMap;
 use reth::blockchain_tree::chain;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
 use reth_provider::StateProvider;
-use revm_primitives::ChainAddress;
 use reth_provider::StateProviderFactory;
+use revm_primitives::ChainAddress;
 use std::{
     sync::{Arc, Mutex},
     thread::sleep,
@@ -54,8 +54,16 @@ pub fn run_sim_worker<P>(
         let state_providers = providers
             .iter()
             .map(|(chain_id, provider)| {
-                let provider =  provider
-                    .history_by_block_hash(current_sim_context.block_ctx.chains.get(chain_id).unwrap().attributes.parent)
+                let provider = provider
+                    .history_by_block_hash(
+                        current_sim_context
+                            .block_ctx
+                            .chains
+                            .get(chain_id)
+                            .unwrap()
+                            .attributes
+                            .parent,
+                    )
                     .unwrap();
                 (*chain_id, Arc::from(provider))
             })
@@ -68,7 +76,8 @@ pub fn run_sim_worker<P>(
             let sim_start = Instant::now();
 
             let start_time = Instant::now();
-            let mut block_state = BlockState::new_arc(state_providers.clone()).with_cached_reads(cached_reads);
+            let mut block_state =
+                BlockState::new_arc(state_providers.clone()).with_cached_reads(cached_reads);
             let sim_result = simulate_order(
                 task.parents.clone(),
                 task.order.clone(),
@@ -86,13 +95,17 @@ pub fn run_sim_worker<P>(
                                 previous_orders: task.parents,
                                 nonces_after: nonces_after
                                     .into_iter()
-                                    .map(|(address, nonce)| NonceKey { address: ChainAddress(task.order.chain_id().unwrap(), address.clone()), nonce: nonce.clone() })
+                                    .map(|(address, nonce)| NonceKey {
+                                        address: ChainAddress(
+                                            task.order.chain_id().unwrap(),
+                                            address.clone(),
+                                        ),
+                                        nonce: nonce.clone(),
+                                    })
                                     .collect(),
                                 simulation_time: start_time.elapsed(),
                             };
-                            let result_send = current_sim_context
-                                .results
-                                .try_send(result);
+                            let result_send = current_sim_context.results.try_send(result);
                             println!("sending result: {:?}", result_send);
                             true
                         }

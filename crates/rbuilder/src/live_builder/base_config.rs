@@ -5,7 +5,10 @@ use crate::{
     live_builder::{order_input::OrderInputConfig, LiveBuilder},
     roothash::RootHashConfig,
     telemetry::{setup_reloadable_tracing_subscriber, LoggerConfig},
-    utils::{http_provider, BoxedProvider, ProviderFactoryReopener, Signer, ProviderFactoryUnchecked, provider_factory_reopen::ConsistencyReopener},
+    utils::{
+        http_provider, provider_factory_reopen::ConsistencyReopener, BoxedProvider,
+        ProviderFactoryReopener, ProviderFactoryUnchecked, Signer,
+    },
 };
 use ahash::HashSet;
 use alloy_primitives::{Address, B256};
@@ -213,19 +216,17 @@ impl BaseConfig {
     ) -> eyre::Result<super::LiveBuilder<P, DB, SlotSourceType>>
     where
         DB: Database + Clone + 'static,
-        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone,
+        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
         SlotSourceType: SlotSource,
     {
-
         // TODO(Cecilia): get this from exex
         let layer2_info = tokio::runtime::Handle::current().block_on(
             Layer2Info::<P>::new(
-                    l2_providers,
-                    &self.l2_reth_datadirs,
-                    &self.l2_ipc_paths,
-                    &self.l2_server_ports,
-                )
-        )?;
+            l2_providers,
+            &self.l2_reth_datadirs,
+            &self.l2_ipc_paths,
+            &self.l2_server_ports,
+        ))?;
         Ok(LiveBuilder::<P, DB, SlotSourceType> {
             watchdog_timeout: self.watchdog_timeout(),
             error_storage_path: self.error_storage_path.clone(),
@@ -295,13 +296,15 @@ impl BaseConfig {
         )
     }
 
-    pub fn gwyneth_provider_factories(&self) -> eyre::Result<Vec<ProviderFactoryReopener<Arc<DatabaseEnv>>>> {
+    pub fn gwyneth_provider_factories(
+        &self,
+    ) -> eyre::Result<Vec<ProviderFactoryReopener<Arc<DatabaseEnv>>>> {
         self.l2_reth_datadirs
             .iter()
             .zip(self.l2_chain_specs()?.iter())
             .map(|(path, chain_spec)| {
                 let (datadir, static_files) = (path.join("db"), path.join("static_files"));
-                
+
                 let db = open_reth_db(&datadir)?;
 
                 let reopener = ProviderFactoryReopener::new(db, chain_spec.clone(), static_files)?;
@@ -311,7 +314,9 @@ impl BaseConfig {
                     .get_highest_static_file_block(StaticFileSegment::Headers)
                     .is_none()
                 {
-                    eyre::bail!("No headers in static files. Check your static files path configuration.");
+                    eyre::bail!(
+                        "No headers in static files. Check your static files path configuration."
+                    );
                 }
                 Ok(reopener)
             })
@@ -340,7 +345,10 @@ impl BaseConfig {
     }
 
     pub fn coinbase_signer(&self) -> eyre::Result<Signer> {
-        coinbase_signer_from_secret_key(self.chain_spec().unwrap().chain.id(), &self.coinbase_secret_key.value()?)
+        coinbase_signer_from_secret_key(
+            self.chain_spec().unwrap().chain.id(),
+            &self.coinbase_secret_key.value()?,
+        )
     }
 
     pub fn extra_data(&self) -> eyre::Result<Vec<u8>> {
@@ -513,14 +521,12 @@ impl Default for BaseConfig {
     }
 }
 
-
-
 /// Open reth db and DB should be opened once per process but it can be cloned and moved to different threads.
 pub fn create_provider_factory(
     reth_datadir: Option<&Path>,
     reth_db_path: Option<&Path>,
     reth_static_files_path: Option<&Path>,
-chain_spec: Arc<ChainSpec>,
+    chain_spec: Arc<ChainSpec>,
     rw: bool,
 ) -> eyre::Result<ProviderFactoryReopener<Arc<DatabaseEnv>>> {
     // shellexpand the reth datadir

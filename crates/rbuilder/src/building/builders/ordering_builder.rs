@@ -19,17 +19,23 @@ use crate::{
 };
 use ahash::{HashMap, HashSet};
 use alloy_primitives::Address;
-use revm_primitives::ChainAddress;
 use reth::tasks::pool::BlockingTaskPool;
 use reth_db::database::Database;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
-use reth_provider::{DatabaseProviderFactory, StateProvider, StateProviderBox, StateProviderFactory};
+use reth_provider::{
+    DatabaseProviderFactory, StateProvider, StateProviderBox, StateProviderFactory,
+};
+use revm_primitives::ChainAddress;
 use serde::Deserialize;
-use tokio_util::sync::CancellationToken;
 use std::{
     marker::PhantomData,
-    {sync::Arc, thread::sleep, time::{Duration, Instant},
-}};
+    {
+        sync::Arc,
+        thread::sleep,
+        time::{Duration, Instant},
+    },
+};
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info_span, trace};
 
 use super::{
@@ -73,7 +79,12 @@ where
     let mut order_intake_consumer = OrderIntakeConsumer::new(
         input.providers.clone(),
         input.input,
-        input.ctx.chains.iter().map(|(chain_id, ctx)| (*chain_id, ctx.attributes.parent)).collect(),
+        input
+            .ctx
+            .chains
+            .iter()
+            .map(|(chain_id, ctx)| (*chain_id, ctx.attributes.parent))
+            .collect(),
         config.sorting,
         &input.sbundle_mergeabe_signers,
     );
@@ -153,9 +164,12 @@ where
         .iter()
         .map(|(chain_id, provider)| {
             (
-                chain_id.clone(), 
-                provider.history_by_block_number(input.ctx.chains[chain_id].block_env.number.to::<u64>() - 1)
-                    .expect("Failed to get state provider by block number")
+                chain_id.clone(),
+                provider
+                    .history_by_block_number(
+                        input.ctx.chains[chain_id].block_env.number.to::<u64>() - 1,
+                    )
+                    .expect("Failed to get state provider by block number"),
             )
         })
         .collect::<HashMap<u64, StateProviderBox>>();
@@ -269,7 +283,11 @@ where
         let new_ctx = self.ctx.clone();
         for (chain_id, provider_factory) in self.providers.iter() {
             if use_suggested_fee_recipient_as_coinbase {
-                self.ctx.chains.get_mut(chain_id).unwrap().modify_use_suggested_fee_recipient_as_coinbase();
+                self.ctx
+                    .chains
+                    .get_mut(chain_id)
+                    .unwrap()
+                    .modify_use_suggested_fee_recipient_as_coinbase();
             }
         }
 

@@ -153,7 +153,10 @@ where
         for nonce in order.nonces() {
             let onchain_nonce = nonces.nonce(nonce.address)?;
 
-            println!("{:?}: onchain nonce: {} == tx nonce {}", nonce.address, onchain_nonce, nonce.nonce);
+            println!(
+                "{:?}: onchain nonce: {} == tx nonce {}",
+                nonce.address, onchain_nonce, nonce.nonce
+            );
             match onchain_nonce.cmp(&nonce.nonce) {
                 Ordering::Equal => {
                     // nonce, valid
@@ -317,11 +320,15 @@ pub fn simulate_all_orders_with_sim_tree<P>(
     ctx: &BlockBuildingContext,
     orders: &[Order],
     randomize_insertion: bool,
-) -> Result<(Vec<SimulatedOrder>, Vec<OrderErr>), CriticalCommitOrderError> 
+) -> Result<(Vec<SimulatedOrder>, Vec<OrderErr>), CriticalCommitOrderError>
 where
     P: StateProviderFactory + Clone + 'static,
 {
-    let parent_block_hashes = ctx.chains.iter().map(|(chain_id, ctx)| (*chain_id, ctx.attributes.parent)).collect();
+    let parent_block_hashes = ctx
+        .chains
+        .iter()
+        .map(|(chain_id, ctx)| (*chain_id, ctx.attributes.parent))
+        .collect();
     let mut sim_tree = SimTree::new(providers.clone(), parent_block_hashes);
 
     let mut orders = orders.to_vec();
@@ -337,7 +344,12 @@ where
     let mut sim_errors = Vec::new();
     let mut state_for_sim: HashMap<u64, Arc<dyn StateProvider>> = HashMap::default();
     for (&chain_id, provider) in providers.iter() {
-        state_for_sim.insert(chain_id, Arc::<dyn StateProvider>::from(provider.history_by_block_hash(ctx.chains[&chain_id].attributes.parent)?));
+        state_for_sim.insert(
+            chain_id,
+            Arc::<dyn StateProvider>::from(
+                provider.history_by_block_hash(ctx.chains[&chain_id].attributes.parent)?,
+            ),
+        );
     }
     let mut cache_reads = Some(CachedReads::default());
     loop {
@@ -388,7 +400,10 @@ where
                         previous_orders: sim_task.parents,
                         nonces_after: nonces
                             .into_iter()
-                            .map(|(address, nonce)| NonceKey { address: ChainAddress(sim_task.order.chain_id().unwrap(), address), nonce })
+                            .map(|(address, nonce)| NonceKey {
+                                address: ChainAddress(sim_task.order.chain_id().unwrap(), address),
+                                nonce,
+                            })
                             .collect(),
 
                         simulation_time: start_time.elapsed(),

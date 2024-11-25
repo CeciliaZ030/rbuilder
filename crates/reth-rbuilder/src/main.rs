@@ -6,11 +6,15 @@
 //! See <https://github.com/flashbots/rbuilder/issues/229> for more information.
 
 use clap::Args;
+use gwyneth::{GwynethFullNode, GwynethNode};
 use rbuilder::{
     live_builder::{base_config::load_config_toml_and_env, cli::LiveBuilderConfig, config::Config},
     telemetry,
 };
+use reth::{args::RpcServerArgs, chainspec::ChainSpecBuilder};
+use reth_cli_commands::node::L2Args;
 use reth_db_api::Database;
+use reth_node_builder::{NodeBuilder, NodeConfig, NodeHandle};
 use reth_provider::{
     providers::BlockchainProvider, DatabaseProviderFactory, HeaderProvider, StateProviderFactory,
 };
@@ -23,16 +27,6 @@ use tracing::error;
 #[global_allocator]
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
-#[derive(Debug, Clone, Args, PartialEq, Eq, Default)]
-pub struct ExtraArgs {
-    /// Path of the rbuilder config to use
-    #[arg(long = "rbuilder.config")]
-    pub rbuilder_config: PathBuf,
-    /// Enable the engine2 experimental features on reth binary
-    #[arg(long = "engine.experimental", default_value = "false")]
-    pub experimental: bool,
-}
-
 fn main() {
     use clap::Parser;
     use reth::cli::Cli;
@@ -42,8 +36,15 @@ fn main() {
 
     reth_cli_util::sigsegv_handler::install();
 
-    if let Err(err) = Cli::<ExtraArgs>::parse().run(|builder, extra_args| async move {
-        let enable_engine2 = extra_args.experimental;
+    if let Err(err) = Cli::<L2Args>::parse().run(|builder, ext| async move {
+        
+        let gwyneth_nodes = make_gwyneth_nodes(ext).await?;
+        let l2_providers= gwyneth_nodes
+            .iter()
+            .map(|node| node.provider.clone())
+            .collect::<Vec<_>>();
+        
+        let enable_engine2 = ext.experimental;
         match enable_engine2 {
             true => {
                 let handle = builder
@@ -51,8 +52,11 @@ fn main() {
                     .with_components(EthereumNode::components())
                     .with_add_ons::<EthereumAddOns>()
                     .on_rpc_started(move |ctx, _| {
-                        spawn_rbuilder(ctx.provider().clone(), extra_args.rbuilder_config);
+                        spawn_rbuilder(ctx.provider().clone(), l2_providers, ext.rbuilder_config);
                         Ok(())
+                    })
+                    .install_exex("Rollup", move |ctx| async {
+                        Ok(gwyneth::exex::Rollup::new(ctx, gwyneth_nodes).await?.start())
                     })
                     .launch_with_fn(|builder| {
                         let launcher = EngineNodeLauncher::new(
@@ -69,8 +73,11 @@ fn main() {
                     .with_types_and_provider::<EthereumNode, BlockchainProvider<_>>()
                     .with_components(EthereumNode::components())
                     .with_add_ons::<EthereumAddOns>()
+                    .install_exex("Rollup", move |ctx| async {
+                        Ok(gwyneth::exex::Rollup::new(ctx, gwyneth_nodes).await?.start())
+                    })
                     .on_rpc_started(move |ctx, _| {
-                        spawn_rbuilder(ctx.provider().clone(), extra_args.rbuilder_config);
+                        spawn_rbuilder(ctx.provider().clone(), l2_providers, ext.rbuilder_config);
                         Ok(())
                     })
                     .launch()
@@ -84,13 +91,59 @@ fn main() {
     }
 }
 
+async fn make_gwyneth_nodes(ext: L2Args) -> eyre::Result<Vec<GwynethFullNode>> {
+    
+    let gwyneth_nodes = Vec::new();
+
+    // Assuming chain_ids & datadirs are mandetory
+    // If ports and ipc are not supported we used the default ways to derive 
+    assert_eq!(ext.chain_ids.len(), ext.datadirs.len());
+    assert!(ext.chain_ids.len() > 0);
+
+    for (idx, (chain_id, datadir)) in ext.chain_ids.into_iter().zip(ext.datadirs).enumerate() {
+        let chain_spec = ChainSpecBuilder::default()
+            .chain(chain_id.into())
+            .genesis(
+                serde_json::from_str(include_str!(
+                    "../../../crates/ethereum/node/tests/assets/genesis.json"
+                ))
+                .unwrap(),
+            )
+            .cancun_activated()
+            .build();
+        
+        let node_config = NodeConfig::test()
+            .with_chain(chain_spec.clone())
+            .with_network(network_config.clone())
+            .with_unused_ports()
+            .with_rpc(
+                RpcServerArgs::default()
+                    .with_unused_ports()
+                    .with_ports(ext.ports.get(idx), chain_id)
+            );
+        
+
+        let NodeHandle { node: gwyneth_node, node_exit_future: _ } =
+            NodeBuilder::new(node_config.clone())
+                .with_gwyneth_launch_context(exec.clone(), datadir)
+                .node(GwynethNode::default())
+                .launch()
+                .await?;
+
+        gwyneth_nodes.push(gwyneth_node);
+    }
+
+    gwyneth_nodes
+
+}
+
 /// Spawns a tokio rbuilder task.
 ///
 /// Takes down the entire process if the rbuilder errors or stops.
-fn spawn_rbuilder<P, DB>(provider: P, config_path: PathBuf)
+fn spawn_rbuilder<P, DB>(provider: P, l2_providers: Vec<P>, config_path: PathBuf)
 where
     DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone,
 {
     let _handle = task::spawn(async move {
         let result = async {
@@ -113,7 +166,7 @@ where
                 config.base_config.log_enable_dynamic,
             )
             .await?;
-            let builder = config.new_builder(provider, Default::default()).await?;
+            let builder = config.new_builder(provider, l2_providers, Default::default()).await?;
 
             builder.run().await?;
 

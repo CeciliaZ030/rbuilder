@@ -36,7 +36,10 @@ where
     pub fn get_ref(&self) -> ProviderResult<NonceCacheRef> {
         let mut states = HashMap::default();
         for (chain_id, providers) in self.providers.iter() {
-            states.insert(*chain_id, providers.history_by_block_hash(self.block[chain_id])?);
+            states.insert(
+                *chain_id,
+                providers.history_by_block_hash(self.block[chain_id])?,
+            );
         }
         Ok(NonceCacheRef {
             states,
@@ -63,7 +66,9 @@ impl NonceCacheRef {
                 default_chain_id = *chain_id;
             }
         }
-        let nonce = self.states[&address.0].account_nonce(address.1)?.unwrap_or_default();
+        let nonce = self.states[&address.0]
+            .account_nonce(address.1)?
+            .unwrap_or_default();
         cache.insert(address, nonce);
         Ok(nonce)
     }

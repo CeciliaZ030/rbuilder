@@ -22,7 +22,9 @@ use crate::{
             // parallel_builder::{
             //     parallel_build_backtest, ParallelBuilderConfig, ParallelBuildingAlgorithm,
             // },
-            BacktestSimulateBlockInput, Block, BlockBuildingAlgorithm,
+            BacktestSimulateBlockInput,
+            Block,
+            BlockBuildingAlgorithm,
         },
         Sorting,
     },
@@ -33,7 +35,10 @@ use crate::{
     mev_boost::BLSBlockSigner,
     primitives::mev_boost::{MevBoostRelay, RelayConfig},
     roothash::RootHashConfig,
-    utils::{build_info::rbuilder_version, ProviderFactoryReopener, Signer, ProviderFactoryUnchecked, provider_factory_reopen::ConsistencyReopener},
+    utils::{
+        build_info::rbuilder_version, provider_factory_reopen::ConsistencyReopener,
+        ProviderFactoryReopener, ProviderFactoryUnchecked, Signer,
+    },
     validation_api_client::ValidationAPIClient,
 };
 use alloy_chains::ChainKind;
@@ -299,7 +304,7 @@ impl LiveBuilderConfig for Config {
     ) -> eyre::Result<super::LiveBuilder<P, DB, MevBoostSlotDataGenerator>>
     where
         DB: Database + Clone + 'static,
-        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
+        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone,
     {
         let (sink_sealed_factory, relays) = self.l1_config.create_relays_sealed_sink_factory(
             self.base_config.chain_spec()?,
@@ -335,7 +340,7 @@ impl LiveBuilderConfig for Config {
                 sink_factory,
                 payload_event,
                 provider,
-                l2_providers
+                l2_providers,
             )
             .await?;
         let root_hash_config = self.base_config.live_root_hash_config()?;
@@ -367,10 +372,9 @@ impl LiveBuilderConfig for Config {
         match builder_cfg.builder {
             SpecificBuilderConfig::OrderingBuilder(config) => {
                 crate::building::builders::ordering_builder::backtest_simulate_block(config, input)
-            }
-            // SpecificBuilderConfig::ParallelBuilder(config) => {
-            //     parallel_build_backtest(input, config)
-            // }
+            } // SpecificBuilderConfig::ParallelBuilder(config) => {
+              //     parallel_build_backtest(input, config)
+              // }
         }
     }
 }
@@ -517,17 +521,16 @@ where
                 order_cfg,
                 cfg.name,
             ))
-        }
-        // TODO (Cecilia)
-        // SpecificBuilderConfig::ParallelBuilder(parallel_cfg) => {
-        //     Arc::new(ParallelBuildingAlgorithm::new(
-        //         root_hash_config.clone(),
-        //         root_hash_task_pool.clone(),
-        //         sbundle_mergeabe_signers.to_vec(),
-        //         parallel_cfg,
-        //         cfg.name,
-        //     ))
-        // }
+        } // TODO (Cecilia)
+          // SpecificBuilderConfig::ParallelBuilder(parallel_cfg) => {
+          //     Arc::new(ParallelBuildingAlgorithm::new(
+          //         root_hash_config.clone(),
+          //         root_hash_task_pool.clone(),
+          //         sbundle_mergeabe_signers.to_vec(),
+          //         parallel_cfg,
+          //         cfg.name,
+          //     ))
+          // }
     }
 }
 
@@ -622,7 +625,8 @@ mod test {
                 .base_config
                 .coinbase_signer()
                 .expect("Coinbase signer")
-                .address.1,
+                .address
+                .1,
             address!("75618c70B1BBF111F6660B0E3760387fb494102B")
         );
 

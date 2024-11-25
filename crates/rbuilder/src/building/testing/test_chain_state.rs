@@ -21,7 +21,10 @@ use reth_provider::test_utils::create_test_provider_factory;
 use revm_primitives::{ChainAddress, OnChain, SpecId};
 use std::sync::Arc;
 
-use crate::{building::{BlockBuildingContext, ChainBlockBuildingContext}, utils::Signer};
+use crate::{
+    building::{BlockBuildingContext, ChainBlockBuildingContext},
+    utils::Signer,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub enum NamedAddr {

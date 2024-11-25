@@ -233,7 +233,7 @@ pub trait UnfinishedBlockBuildingSinkFactory: Debug + Send + Sync {
     ) -> Arc<dyn UnfinishedBlockBuildingSink>;
 }
 
-/// Basic configuration to run a single block building with a BlockBuildingAlgorithmpub 
+/// Basic configuration to run a single block building with a BlockBuildingAlgorithmpub
 pub struct BacktestSimulateBlockInput<'a, P> {
     pub ctx: BlockBuildingContext,
     pub builder_name: String,

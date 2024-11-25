@@ -1,23 +1,23 @@
+use ahash::HashMap;
+use alloy_eips::BlockId;
+use alloy_primitives::U256;
+use alloy_provider::{IpcConnect, Provider, ProviderBuilder, RootProvider};
+use alloy_pubsub::PubSubFrontend;
+use alloy_rpc_types::{Block, BlockTransactionsKind};
+use eyre::Result;
+use reth_db::{Database, DatabaseEnv};
+use reth_node_core::args::utils::chain_value_parser;
+use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 use std::marker::PhantomData;
 use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use ahash::HashMap;
-use alloy_primitives::U256;
-use alloy_provider::{IpcConnect, ProviderBuilder, Provider, RootProvider};
-use alloy_rpc_types::{Block, BlockTransactionsKind};
-use alloy_eips::BlockId;
-use alloy_pubsub::PubSubFrontend;
-use eyre::Result;
-use reth_db::{DatabaseEnv, Database};
-use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 use tracing::warn;
-use reth_node_core::args::utils::chain_value_parser;
 
-use crate::utils::ProviderFactoryReopener;
 use super::config::create_provider_factory;
 use super::order_input::OrderInputConfig;
+use crate::utils::ProviderFactoryReopener;
 
 pub fn create_gwyneth_providers<P, DB>(chain_ids: Vec<u64>) -> eyre::Result<HashMap<u64, P>>
 where
@@ -26,14 +26,21 @@ where
     P: From<ProviderFactoryReopener<Arc<DatabaseEnv>>>,
 {
     let datadir_base = "/data/reth/gwyneth";
-    let chain = chain_value_parser("/network-configs/genesis.json").expect("failed to load gwyneth chain spec");
+    let chain = chain_value_parser("/network-configs/genesis.json")
+        .expect("failed to load gwyneth chain spec");
 
     let mut nodes = HashMap::default();
     for chain_id in chain_ids {
         let provider_factory = create_provider_factory(
-            Some(Path::new(&format!("{}-{}", datadir_base, chain_id).to_owned())),
-            Some(Path::new(&format!("{}-{}/db", datadir_base, chain_id).to_owned())),
-            Some(Path::new(&format!("{}-{}/static_files", datadir_base, chain_id).to_owned())),
+            Some(Path::new(
+                &format!("{}-{}", datadir_base, chain_id).to_owned(),
+            )),
+            Some(Path::new(
+                &format!("{}-{}/db", datadir_base, chain_id).to_owned(),
+            )),
+            Some(Path::new(
+                &format!("{}-{}/static_files", datadir_base, chain_id).to_owned(),
+            )),
             chain.clone(),
         )?;
         nodes.insert(chain_id, provider_factory.into());
@@ -50,7 +57,7 @@ pub struct GwynethNode<P> {
 
 #[derive(Debug)]
 pub struct Layer2Info<P> {
-    pub ipc_providers: Arc<RwLock<HashMap<u64, (RootProvider<PubSubFrontend>, PathBuf)>>>,  // Changed to RwLock
+    pub ipc_providers: Arc<RwLock<HashMap<u64, (RootProvider<PubSubFrontend>, PathBuf)>>>, // Changed to RwLock
     pub data_dirs: HashMap<u64, PathBuf>,
     pub nodes: HashMap<u64, GwynethNode<P>>,
 }
@@ -63,53 +70,60 @@ impl<P> PartialEq for Layer2Info<P> {
 
 impl<P> Eq for Layer2Info<P> {}
 
-impl<P> Layer2Info<P> 
+impl<P> Layer2Info<P>
 where
     P: StateProviderFactory + Clone + 'static,
 {
     pub async fn new(
-        provider_factories: Vec<P>, 
-        data_dirs: &Vec<PathBuf>, 
-        ipc_paths: &Vec<PathBuf>, 
-        server_ports: &Vec<u64>
+        provider_factories: Vec<P>,
+        data_dirs: &Vec<PathBuf>,
+        ipc_paths: &Vec<PathBuf>,
+        server_ports: &Vec<u64>,
     ) -> Result<Self> {
         let mut providers = HashMap::default();
         let mut data_dirs_map = HashMap::default();
         let mut nodes = HashMap::default();
-        for (((provider_factory, data_dir), ipc_path), port) in provider_factories
+        for (((provider_factory , data_dir), ipc_path), port) in provider_factories
             .iter()
             .zip(data_dirs.iter())
             .zip(ipc_paths.iter())
-            .zip(server_ports.iter()) 
+            .zip(server_ports.iter())
         {
             let ipc: IpcConnect<_> = IpcConnect::new(ipc_path.clone());
             let provider = ProviderBuilder::new().on_ipc(ipc).await?;
             let chain_id = provider.get_chain_id().await?;
             providers.insert(chain_id, (provider, ipc_path.clone()));
             data_dirs_map.insert(chain_id, data_dir.clone());
-            nodes.insert(chain_id, GwynethNode::<P> {
+            nodes.insert(
+                chain_id,
+                GwynethNode::<P> {
                     provider_factory: provider_factory.clone(),
                     order_input_config: OrderInputConfig::new(
                         true,
                         false,
                         ipc_path.clone(),
-                        *port as u16,                    
+                        *port as u16,
                         Ipv4Addr::new(0, 0, 0, 0),
                         4096,
                         Duration::from_millis(50),
                         10_000,
                     ),
-           });
+                },
+            );
         }
-    
+
         Ok(Self {
-            ipc_providers: Arc::new(RwLock::new(providers)), 
+            ipc_providers: Arc::new(RwLock::new(providers)),
             data_dirs: data_dirs_map,
             nodes,
         })
     }
 
-    pub async fn get_latest_block(&self, chain_id: u64, block_id: BlockId) -> Result<Option<Block>> {
+    pub async fn get_latest_block(
+        &self,
+        chain_id: u64,
+        block_id: BlockId,
+    ) -> Result<Option<Block>> {
         if self.ensure_connection(&chain_id).await {
             // Take a copy of the provider under a shorter lock
             let provider = {
@@ -132,14 +146,19 @@ where
     pub async fn ensure_connection(&self, chain_id: &u64) -> bool {
         let provider_and_path = {
             let providers = self.ipc_providers.read().unwrap();
-            providers.get(chain_id).map(|(p, path)| (p.clone(), path.clone()))
+            providers
+                .get(chain_id)
+                .map(|(p, path)| (p.clone(), path.clone()))
         };
 
         if let Some((provider, ipc_path)) = provider_and_path {
             match provider.get_chain_id().await {
                 Ok(_) => true,
                 Err(_) => {
-                    warn!("Connection lost for chain_id: {}. Attempting to reconnect...", chain_id);
+                    warn!(
+                        "Connection lost for chain_id: {}. Attempting to reconnect...",
+                        chain_id
+                    );
                     match self.reconnect(&provider, ipc_path.to_str().unwrap()).await {
                         Ok(new_provider) => {
                             // Update the provider with write lock
@@ -150,7 +169,10 @@ where
                             true
                         }
                         Err(e) => {
-                            warn!("Failed to reconnect for chain_id: {}. Error: {:?}", chain_id, e);
+                            warn!(
+                                "Failed to reconnect for chain_id: {}. Error: {:?}",
+                                chain_id, e
+                            );
                             false
                         }
                     }
@@ -184,7 +206,11 @@ where
         self.data_dirs.get(chain_id)
     }
 
-    async fn reconnect(&self, provider: &RootProvider<PubSubFrontend>, ipc_path: &str) -> Result<RootProvider<PubSubFrontend>> {
+    async fn reconnect(
+        &self,
+        provider: &RootProvider<PubSubFrontend>,
+        ipc_path: &str,
+    ) -> Result<RootProvider<PubSubFrontend>> {
         let ipc = IpcConnect::new(ipc_path.to_string());
         let new_provider = ProviderBuilder::new().on_ipc(ipc).await?;
         Ok(new_provider)

@@ -90,19 +90,20 @@ impl MevBoostRelay {
             ))
         });
 
-        let block_proposer = if let (Some(l1_rpc_url), Some(l1_smart_contract_address), Some(l1_proposer_pk)) = (
-            &config.l1_rpc_url,
-            &config.l1_smart_contract_address,
-            &config.l1_proposer_pk
-        ) {
-            Some(BlockProposer::new(
-                l1_rpc_url.clone(),
-                l1_smart_contract_address.clone(),
-                l1_proposer_pk.clone(),
-            )?)
-        } else {
-            None
-        };
+        let block_proposer =
+            if let (Some(l1_rpc_url), Some(l1_smart_contract_address), Some(l1_proposer_pk)) = (
+                &config.l1_rpc_url,
+                &config.l1_smart_contract_address,
+                &config.l1_proposer_pk,
+            ) {
+                Some(BlockProposer::new(
+                    l1_rpc_url.clone(),
+                    l1_smart_contract_address.clone(),
+                    l1_proposer_pk.clone(),
+                )?)
+            } else {
+                None
+            };
 
         Ok(MevBoostRelay {
             id: config.name.to_string(),
@@ -124,7 +125,10 @@ impl MevBoostRelay {
         // Handle the Option<BlockProposer>
         if let Some(proposer) = &self.block_proposer {
             // Call propose_block on the BlockProposer with the SubmitBlockRequest
-            proposer.propose_block(data).await.map_err(|e| SubmitBlockErr::SimError(e.to_string()))?;
+            proposer
+                .propose_block(data)
+                .await
+                .map_err(|e| SubmitBlockErr::SimError(e.to_string()))?;
         } else {
             // Handle the case where there's no BlockProposer
             println!("No L1 block proposer configured");

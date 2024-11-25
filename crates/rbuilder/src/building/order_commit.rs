@@ -25,13 +25,14 @@ use reth_provider::{StateProvider, StateProviderBox};
 use revm::{
     db::{states::bundle_state::BundleRetention, BundleState},
     inspector_handle_register,
-    primitives::{db::WrapDatabaseRef, EVMError, Env, ExecutionResult, InvalidTransaction, TxEnv}, DatabaseCommit, State, SyncDatabase as Database,
+    primitives::{db::WrapDatabaseRef, EVMError, Env, ExecutionResult, InvalidTransaction, TxEnv},
+    DatabaseCommit, State, SyncDatabase as Database,
 };
 use revm_primitives::ChainAddress;
 
 use crate::building::evm_inspector::{RBuilderEVMInspector, UsedStateTrace};
-use std::{sync::Arc};
 use ahash::HashMap;
+use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Clone)]
@@ -70,7 +71,7 @@ impl BlockState {
         self.providers[&chain_id].clone()
     }
 
-    pub fn with_cached_reads(mut self, cached_reads:CachedReads) -> Self {
+    pub fn with_cached_reads(mut self, cached_reads: CachedReads) -> Self {
         self.cached_reads = cached_reads;
         self
     }
@@ -80,8 +81,18 @@ impl BlockState {
         self
     }
 
-    pub fn into_parts(self) -> (CachedReads, BundleState, HashMap<u64, Arc<dyn StateProvider>>) {
-        (self.cached_reads, self.bundle_state.unwrap(), self.providers)
+    pub fn into_parts(
+        self,
+    ) -> (
+        CachedReads,
+        BundleState,
+        HashMap<u64, Arc<dyn StateProvider>>,
+    ) {
+        (
+            self.cached_reads,
+            self.bundle_state.unwrap(),
+            self.providers,
+        )
     }
 
     pub fn clone_bundle_and_cache(&self) -> (CachedReads, BundleState) {
@@ -92,7 +103,12 @@ impl BlockState {
     }
 
     pub fn new_db_ref(&mut self) -> BlockStateDBRef<impl Database<Error = ProviderError> + '_> {
-        let state_providers = SyncStateProviderDatabase(self.providers.iter().map(|(chain_id, provider)| (*chain_id, StateProviderDatabase(provider))).collect());
+        let state_providers = SyncStateProviderDatabase(
+            self.providers
+                .iter()
+                .map(|(chain_id, provider)| (*chain_id, StateProviderDatabase(provider)))
+                .collect(),
+        );
         let cachedb = WrapDatabaseRef(self.cached_reads.as_db(state_providers));
         let bundle_state = self.bundle_state.take().unwrap();
         let db = State::builder()
@@ -813,7 +829,8 @@ impl<'a, 'b, Tracer: SimulationTracer> PartialBlockFork<'a, 'b, Tracer> {
                 ShareBundleBody::Tx(sbundle_tx) => {
                     let rollback_point = self.rollback_point();
                     let tx = &sbundle_tx.tx;
-                    let coinbase_balance_before = self.state.balance(chain_ctx.block_env.coinbase)?;
+                    let coinbase_balance_before =
+                        self.state.balance(chain_ctx.block_env.coinbase)?;
                     let result = self.commit_tx(
                         tx,
                         ctx,
@@ -947,13 +964,17 @@ impl<'a, 'b, Tracer: SimulationTracer> PartialBlockFork<'a, 'b, Tracer> {
         // calculate gas limits
         let mut payouts_promised = HashMap::default();
         for (to, refundable_value) in inner_payouts.drain() {
-            let gas_limit =
-                match estimate_payout_gas_limit(ChainAddress(chain_id, to), ctx, self.state, insert.cumulative_gas_used) {
-                    Ok(gas_limit) => gas_limit,
-                    Err(err) => {
-                        return Ok(Err(BundleErr::EstimatePayoutGas(err)));
-                    }
-                };
+            let gas_limit = match estimate_payout_gas_limit(
+                ChainAddress(chain_id, to),
+                ctx,
+                self.state,
+                insert.cumulative_gas_used,
+            ) {
+                Ok(gas_limit) => gas_limit,
+                Err(err) => {
+                    return Ok(Err(BundleErr::EstimatePayoutGas(err)));
+                }
+            };
             let base_fee = chain_ctx.block_env.basefee * U256::from(gas_limit);
             if base_fee > refundable_value {
                 return Ok(Err(BundleErr::NotEnoughRefundForGas {
@@ -1046,7 +1067,8 @@ impl<'a, 'b, Tracer: SimulationTracer> PartialBlockFork<'a, 'b, Tracer> {
                     Ok(ok) => {
                         // Builder does not sign txs in this code path, so allow negative coinbase
                         // profit.
-                        let coinbase_balance_after = self.state.balance(chain_ctx.block_env.coinbase)?;
+                        let coinbase_balance_after =
+                            self.state.balance(chain_ctx.block_env.coinbase)?;
                         let coinbase_profit =
                             coinbase_balance_after.saturating_sub(coinbase_balance_before);
                         Ok(Ok(OrderOk {
@@ -1079,7 +1101,8 @@ impl<'a, 'b, Tracer: SimulationTracer> PartialBlockFork<'a, 'b, Tracer> {
                     Ok(ok) => {
                         // Builder does not sign txs in this code path, so allow negative coinbase
                         // profit.
-                        let coinbase_balance_after = self.state.balance(chain_ctx.block_env.coinbase)?;
+                        let coinbase_balance_after =
+                            self.state.balance(chain_ctx.block_env.coinbase)?;
                         let coinbase_profit =
                             coinbase_balance_after.saturating_sub(coinbase_balance_before);
                         Ok(Ok(OrderOk {
@@ -1110,7 +1133,8 @@ impl<'a, 'b, Tracer: SimulationTracer> PartialBlockFork<'a, 'b, Tracer> {
                 )?;
                 match res {
                     Ok(ok) => {
-                        let coinbase_balance_after = self.state.balance(chain_ctx.block_env.coinbase)?;
+                        let coinbase_balance_after =
+                            self.state.balance(chain_ctx.block_env.coinbase)?;
                         // Builder does sign txs in this code path, so do not allow negative coinbase
                         // profit.
                         let coinbase_profit = match coinbase_profit(
