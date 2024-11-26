@@ -110,7 +110,6 @@ async fn main() -> eyre::Result<()> {
         sink_factory: Box::new(TraceBlockSinkFactory {}),
         builders: vec![Arc::new(DummyBuildingAlgorithm::new(10))],
         layer2_info,
-        run_sparse_trie_prefetcher: false,
     };
 
     let ctrlc = tokio::spawn(async move {
@@ -245,7 +244,7 @@ where
     fn build_blocks(&self, input: BlockBuildingAlgorithmInput<P>) {
         if let Some(orders) = self.wait_for_orders(&input.cancel, input.input) {
             let block = self
-                .build_block(orders, input.provider, &input.ctx)
+                .build_block(orders, input.providers, &input.ctx)
                 .unwrap();
             input.sink.new_block(block);
         }
