@@ -113,7 +113,7 @@ impl MevBoostRelay {
             use_gzip_for_submit: config.use_gzip_for_submit,
             optimistic: config.optimistic,
             submission_rate_limiter,
-            block_proposer: block_proposer,
+            block_proposer,
         })
     }
 

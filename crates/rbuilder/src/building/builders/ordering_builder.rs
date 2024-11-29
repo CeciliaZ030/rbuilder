@@ -7,7 +7,6 @@
 //! For some more details see [`OrderingBuilderConfig`]
 use crate::building::block_orders_from_sim_orders;
 use crate::roothash::RootHashConfig;
-use crate::utils::check_provider_factory_health;
 use crate::{
     building::{
         builders::{
@@ -23,14 +22,13 @@ use reth::tasks::pool::BlockingTaskPool;
 use reth_db::database::Database;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
 use reth_provider::{
-    DatabaseProviderFactory, StateProvider, StateProviderBox, StateProviderFactory,
+    DatabaseProviderFactory, StateProviderBox, StateProviderFactory,
 };
 use revm_primitives::ChainAddress;
 use serde::Deserialize;
 use std::{
     marker::PhantomData,
     {
-        sync::Arc,
         thread::sleep,
         time::{Duration, Instant},
     },
@@ -164,7 +162,7 @@ where
         .iter()
         .map(|(chain_id, provider)| {
             (
-                chain_id.clone(),
+                *chain_id,
                 provider
                     .history_by_block_number(
                         input.ctx.chains[chain_id].block_env.number.to::<u64>() - 1,
@@ -318,7 +316,7 @@ where
         mut block_orders: BlockOrders,
         build_start: Instant,
     ) -> eyre::Result<()> {
-        if block_orders.get_all_orders().len() > 0 {
+        if !block_orders.get_all_orders().is_empty() {
             println!("fill_orders: {:?}", block_orders);
         }
         let mut order_attempts: HashMap<OrderId, usize> = HashMap::default();

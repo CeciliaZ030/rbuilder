@@ -12,7 +12,7 @@ use crate::{
         SimulatedOrder, TransactionSignedEcRecoveredWithBlobs, TxRevertBehavior,
     },
 };
-use alloy_primitives::{Address, TxHash};
+use alloy_primitives::TxHash;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
 use revm::db::BundleState;
 use revm_primitives::ChainAddress;

@@ -36,7 +36,7 @@ use crate::{
     primitives::mev_boost::{MevBoostRelay, RelayConfig},
     roothash::RootHashConfig,
     utils::{
-        build_info::rbuilder_version, provider_factory_reopen::ConsistencyReopener,
+        build_info::rbuilder_version,
         ProviderFactoryReopener, ProviderFactoryUnchecked, Signer,
     },
     validation_api_client::ValidationAPIClient,

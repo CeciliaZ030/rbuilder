@@ -8,7 +8,6 @@ use eyre::Result;
 use reth_db::{Database, DatabaseEnv};
 use reth_node_core::args::utils::chain_value_parser;
 use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
-use std::marker::PhantomData;
 use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
@@ -83,7 +82,7 @@ where
         let mut providers = HashMap::default();
         let mut data_dirs_map = HashMap::default();
         let mut nodes = HashMap::default();
-        for (((provider_factory , data_dir), ipc_path), port) in provider_factories
+        for (((provider_factory, data_dir), ipc_path), port) in provider_factories
             .iter()
             .zip(data_dirs.iter())
             .zip(ipc_paths.iter())

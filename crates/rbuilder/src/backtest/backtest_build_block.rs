@@ -125,7 +125,7 @@ where
                 let mut providers = HashMap::default();
                 // Use ctx.parent_chain_id as the key - one is OK for testing
                 providers.insert(ctx.parent_chain_id, provider_factory.clone());
-    
+
                 let input = BacktestSimulateBlockInput {
                     ctx: ctx.clone(),
                     builder_name: builder_name.clone(),

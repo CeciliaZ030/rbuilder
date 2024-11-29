@@ -15,7 +15,7 @@ use reth_db::Database;
 use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, trace};
+use tracing::{debug, trace};
 
 use super::{
     order_input::{

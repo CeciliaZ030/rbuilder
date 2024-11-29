@@ -47,7 +47,7 @@ impl<DB: Database + Clone> ConsistencyReopener<DB> for ProviderFactoryReopener<D
         block_number: u64,
     ) -> eyre::Result<ProviderFactory<DB>> {
         // Call the existing implementation and just return Ok(()) since we don't need the provider
-        return Ok(self.check_consistency_and_reopen_if_needed()?);
+        self.check_consistency_and_reopen_if_needed()
     }
 }
 

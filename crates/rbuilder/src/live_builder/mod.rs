@@ -20,7 +20,7 @@ use crate::{
         watchdog::spawn_watchdog_thread,
     },
     telemetry::inc_active_slots,
-    utils::{error_storage::spawn_error_storage_writer, ProviderFactoryReopener, Signer},
+    utils::{error_storage::spawn_error_storage_writer, Signer},
 };
 use ahash::{HashMap, HashSet};
 use alloy_chains::Chain;
@@ -37,9 +37,9 @@ use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
 use std::{cmp::min, path::PathBuf, sync::Arc, time::Duration};
 use std::{fmt::Debug, thread::sleep};
 use time::OffsetDateTime;
-use tokio::{sync::mpsc, task::spawn_blocking};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use layer2_info::Layer2Info;
 

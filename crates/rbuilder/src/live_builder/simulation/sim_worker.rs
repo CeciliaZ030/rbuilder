@@ -8,9 +8,7 @@ use crate::{
     telemetry::add_sim_thread_utilisation_timings,
 };
 use ahash::HashMap;
-use reth::blockchain_tree::chain;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
-use reth_provider::StateProvider;
 use reth_provider::StateProviderFactory;
 use revm_primitives::ChainAddress;
 use std::{
@@ -94,13 +92,13 @@ pub fn run_sim_worker<P>(
                                 simulated_order: simulated_order.clone(),
                                 previous_orders: task.parents,
                                 nonces_after: nonces_after
-                                    .into_iter()
+                                    .iter()
                                     .map(|(address, nonce)| NonceKey {
                                         address: ChainAddress(
                                             task.order.chain_id().unwrap(),
-                                            address.clone(),
+                                            *address,
                                         ),
-                                        nonce: nonce.clone(),
+                                        nonce: *nonce,
                                     })
                                     .collect(),
                                 simulation_time: start_time.elapsed(),

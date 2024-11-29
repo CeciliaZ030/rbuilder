@@ -5,17 +5,18 @@
 //! Note this method of running rbuilder is not quite ready for production.
 //! See <https://github.com/flashbots/rbuilder/issues/229> for more information.
 
-use clap::Args;
-use gwyneth::{cli::GwynethArgs, engine_api::RpcServerArgsExEx, exex::GwynethFullNode, GwynethNode};
+use gwyneth::{
+    cli::GwynethArgs, exex::GwynethFullNode,
+};
 use rbuilder::{
     live_builder::{base_config::load_config_toml_and_env, cli::LiveBuilderConfig, config::Config},
     telemetry,
 };
-use reth::{args::{DiscoveryArgs, NetworkArgs, RpcServerArgs}, chainspec::ChainSpecBuilder, tasks::TaskManager};
 use reth_db_api::Database;
-use reth_node_builder::{DefaultNodeLauncher, EngineNodeLauncher, Node, NodeBuilder, NodeConfig, NodeHandle};
+use reth_node_builder::EngineNodeLauncher;
 use reth_provider::{
-    providers::{BlockchainProvider, BlockchainProvider2}, DatabaseProviderFactory, HeaderProvider, StateProviderFactory,
+    providers::{BlockchainProvider, BlockchainProvider2},
+    DatabaseProviderFactory, HeaderProvider, StateProviderFactory,
 };
 use std::{path::PathBuf, process};
 use tokio::task;
@@ -33,7 +34,7 @@ fn main() -> eyre::Result<()> {
 
     reth_cli_util::sigsegv_handler::install();
 
-    if let Err(err) = Cli::<GwynethArgs>::parse().run(|builder, ext| async move {        
+    if let Err(err) = Cli::<GwynethArgs>::parse().run(|builder, ext| async move {
         let gwyneth_nodes = gwyneth::cli::create_gwyneth_nodes(&ext).await;
 
         let enable_engine2 = ext.experimental;
@@ -41,11 +42,11 @@ fn main() -> eyre::Result<()> {
             true => {
                 let l2_providers = gwyneth_nodes
                     .iter()
-                    .map(|node| {
-                        match node {
-                            GwynethFullNode::Provider1(_) => panic!("Unexpected Provider: expect BlockchainProvider2"),
-                            GwynethFullNode::Provider2(n) => n.provider.clone()
+                    .map(|node| match node {
+                        GwynethFullNode::Provider1(_) => {
+                            panic!("Unexpected Provider: expect BlockchainProvider2")
                         }
+                        GwynethFullNode::Provider2(n) => n.provider.clone(),
                     })
                     .collect::<Vec<_>>();
 
@@ -57,7 +58,9 @@ fn main() -> eyre::Result<()> {
                         spawn_rbuilder(ctx.provider().clone(), l2_providers, ext.rbuilder_config)
                     })
                     .install_exex("Rollup", move |ctx| async {
-                        Ok(gwyneth::exex::Rollup::new(ctx, gwyneth_nodes).await?.start())
+                        Ok(gwyneth::exex::Rollup::new(ctx, gwyneth_nodes)
+                            .await?
+                            .start())
                     })
                     .launch_with_fn(|builder| {
                         let launcher = EngineNodeLauncher::new(
@@ -71,22 +74,23 @@ fn main() -> eyre::Result<()> {
             }
             false => {
                 let l2_providers = gwyneth_nodes
-                .iter()
-                .map(|node| {
-                    match node {
+                    .iter()
+                    .map(|node| match node {
                         GwynethFullNode::Provider1(n) => n.provider.clone(),
-                        GwynethFullNode::Provider2(_) => panic!("Unexpected Provider: expect BlockchainProvider"),
-
-                    }
-                })
-                .collect::<Vec<_>>();
+                        GwynethFullNode::Provider2(_) => {
+                            panic!("Unexpected Provider: expect BlockchainProvider")
+                        }
+                    })
+                    .collect::<Vec<_>>();
 
                 let handle = builder
                     .with_types_and_provider::<EthereumNode, BlockchainProvider<_>>()
                     .with_components(EthereumNode::components())
                     .with_add_ons::<EthereumAddOns>()
                     .install_exex("Rollup", move |ctx| async {
-                        Ok(gwyneth::exex::Rollup::new(ctx, gwyneth_nodes).await?.start())
+                        Ok(gwyneth::exex::Rollup::new(ctx, gwyneth_nodes)
+                            .await?
+                            .start())
                     })
                     .on_rpc_started(move |ctx, _| {
                         spawn_rbuilder(ctx.provider().clone(), l2_providers, ext.rbuilder_config)
@@ -106,7 +110,11 @@ fn main() -> eyre::Result<()> {
 /// Spawns a tokio rbuilder task.
 ///
 /// Takes down the entire process if the rbuilder errors or stops.
-fn spawn_rbuilder<P, DB>(provider: P, l2_providers: Vec<P>, config_path: PathBuf) -> eyre::Result<()>
+fn spawn_rbuilder<P, DB>(
+    provider: P,
+    l2_providers: Vec<P>,
+    config_path: PathBuf,
+) -> eyre::Result<()>
 where
     DB: Database + Clone + 'static,
     P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
@@ -132,7 +140,9 @@ where
                 config.base_config.log_enable_dynamic,
             )
             .await?;
-            let builder = config.new_builder(provider, l2_providers, Default::default()).await?;
+            let builder = config
+                .new_builder(provider, l2_providers, Default::default())
+                .await?;
 
             builder.run().await?;
 

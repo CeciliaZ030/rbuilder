@@ -23,7 +23,7 @@ use rbuilder::{
             DEFAULT_RETH_DB_PATH,
         },
         config::create_provider_factory,
-        layer2_info::{self, Layer2Info},
+        layer2_info::{Layer2Info},
         order_input::{
             OrderInputConfig, DEFAULT_INPUT_CHANNEL_BUFFER_SIZE, DEFAULT_RESULTS_CHANNEL_TIMEOUT,
             DEFAULT_SERVE_MAX_CONNECTIONS,

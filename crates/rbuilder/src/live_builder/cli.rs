@@ -15,9 +15,7 @@ use crate::{
         base_config::load_config_toml_and_env, payload_events::MevBoostSlotDataGenerator,
     },
     telemetry,
-    utils::{
-        build_info::Version, provider_factory_reopen::ConsistencyReopener, ProviderFactoryUnchecked,
-    },
+    utils::build_info::Version,
 };
 
 use super::{base_config::BaseConfig, LiveBuilder};
@@ -57,7 +55,7 @@ pub trait LiveBuilderConfig: Debug + DeserializeOwned + Sync {
     where
         DB: Database + Clone + 'static,
         P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static;
-        
+
     /// Patch until we have a unified way of backtesting using the exact algorithms we use on the LiveBuilder.
     /// building_algorithm_name will come from the specific configuration.
     fn build_backtest_block<P, DB>(

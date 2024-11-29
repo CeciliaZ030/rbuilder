@@ -1,7 +1,7 @@
 use super::{BlockBuildingContext, BlockState, PartialBlockFork};
 use crate::primitives::{Order, OrderId};
 use itertools::Itertools;
-use reth::{primitives::Address, providers::StateProviderBox};
+use reth::providers::StateProviderBox;
 use reth_provider::StateProvider;
 use revm_primitives::{ChainAddress, U256};
 use std::{

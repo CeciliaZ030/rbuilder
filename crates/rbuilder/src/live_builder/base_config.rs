@@ -6,7 +6,7 @@ use crate::{
     roothash::RootHashConfig,
     telemetry::{setup_reloadable_tracing_subscriber, LoggerConfig},
     utils::{
-        http_provider, provider_factory_reopen::ConsistencyReopener, BoxedProvider,
+        http_provider, BoxedProvider,
         ProviderFactoryReopener, ProviderFactoryUnchecked, Signer,
     },
 };
@@ -220,8 +220,7 @@ impl BaseConfig {
         SlotSourceType: SlotSource,
     {
         // TODO(Cecilia): get this from exex
-        let layer2_info = tokio::runtime::Handle::current().block_on(
-            Layer2Info::<P>::new(
+        let layer2_info = tokio::runtime::Handle::current().block_on(Layer2Info::<P>::new(
             l2_providers,
             &self.l2_reth_datadirs,
             &self.l2_ipc_paths,

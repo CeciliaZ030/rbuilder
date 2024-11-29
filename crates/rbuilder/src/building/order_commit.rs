@@ -10,7 +10,6 @@ use crate::{
     utils::get_percent,
 };
 
-use alloy_chains::Chain;
 use alloy_primitives::{Address, B256, U256};
 
 use reth::revm::database::{StateProviderDatabase, SyncStateProviderDatabase};

@@ -13,13 +13,9 @@ use crate::{
 use ahash::HashMap;
 use reth_provider::StateProviderFactory;
 use simulation_job::SimulationJob;
-use std::{
-    marker::PhantomData,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info_span, Instrument};
 
 #[derive(Debug)]
 pub struct SlotOrderSimResults {
@@ -182,7 +178,7 @@ mod tests {
         primitives::{MempoolTx, Order, TransactionSignedEcRecoveredWithBlobs},
         utils::ProviderFactoryReopener,
     };
-    use reth_evm::provider;
+    
     use reth_primitives::U256;
 
     #[tokio::test]

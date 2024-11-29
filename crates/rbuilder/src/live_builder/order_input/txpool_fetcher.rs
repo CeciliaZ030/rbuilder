@@ -183,7 +183,7 @@ mod test {
         let gas_price = provider.get_gas_price().await.unwrap();
         let eip1559_est = provider.estimate_eip1559_fees(None).await.unwrap();
 
-        let mut tx = TransactionRequest::default()
+        let tx = TransactionRequest::default()
             .with_to(alice)
             .with_nonce(0)
             .with_max_fee_per_blob_gas(gas_price)
