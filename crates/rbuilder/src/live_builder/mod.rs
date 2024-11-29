@@ -140,7 +140,7 @@ where
             let orderpool_subscriber = {
                 let (handle, sub) = start_orderpool_jobs(
                     node.order_input_config.clone(),
-                    node.provider_factory.clone(),
+                    node.provider.clone(),
                     RpcModule::new(()),
                     self.global_cancellation.clone(),
                 )
@@ -149,7 +149,7 @@ where
                 sub
             };
             orderpool_subscribers.insert(*chain_id, orderpool_subscriber);
-            providers.insert(*chain_id, node.provider_factory.clone());
+            providers.insert(*chain_id, node.provider.clone());
         }
 
         let order_simulation_pool = {

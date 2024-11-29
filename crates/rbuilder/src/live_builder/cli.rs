@@ -106,7 +106,8 @@ where
     )
     .await?;
     let provider = config.base_config().create_provider_factory()?;
-    let l2_providers = config.base_config().gwyneth_provider_factories()?;
+    // For out-of-process builders only
+    let l2_providers = config.base_config().gwyneth_provider_reopeners()?;
     let builder = config
         .new_builder(provider, l2_providers, cancel.clone())
         .await?;

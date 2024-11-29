@@ -7783,6 +7783,7 @@ dependencies = [
  "flume",
  "futures",
  "governor",
+ "gwyneth",
  "humantime",
  "hyper 1.5.0",
  "integer-encoding",

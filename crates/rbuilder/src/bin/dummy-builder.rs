@@ -73,7 +73,7 @@ async fn main() -> eyre::Result<()> {
         cancel.clone(),
     );
 
-    let layer2_info = Layer2Info::new(vec![], &vec![], &vec![], &vec![]).await?;
+    let layer2_info = Layer2Info::new(vec![], &vec![], &vec![]).await?;
 
     let builder = LiveBuilder::<
         ProviderFactoryReopener<Arc<DatabaseEnv>>,

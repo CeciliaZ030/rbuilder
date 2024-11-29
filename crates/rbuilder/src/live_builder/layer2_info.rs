@@ -14,94 +14,49 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tracing::warn;
 
-use super::config::create_provider_factory;
 use super::order_input::OrderInputConfig;
-use crate::utils::ProviderFactoryReopener;
-
-pub fn create_gwyneth_providers<P, DB>(chain_ids: Vec<u64>) -> eyre::Result<HashMap<u64, P>>
-where
-    DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
-    P: From<ProviderFactoryReopener<Arc<DatabaseEnv>>>,
-{
-    let datadir_base = "/data/reth/gwyneth";
-    let chain = chain_value_parser("/network-configs/genesis.json")
-        .expect("failed to load gwyneth chain spec");
-
-    let mut nodes = HashMap::default();
-    for chain_id in chain_ids {
-        let provider_factory = create_provider_factory(
-            Some(Path::new(
-                &format!("{}-{}", datadir_base, chain_id).to_owned(),
-            )),
-            Some(Path::new(
-                &format!("{}-{}/db", datadir_base, chain_id).to_owned(),
-            )),
-            Some(Path::new(
-                &format!("{}-{}/static_files", datadir_base, chain_id).to_owned(),
-            )),
-            chain.clone(),
-        )?;
-        nodes.insert(chain_id, provider_factory.into());
-    }
-
-    Ok(nodes)
-}
 
 #[derive(Debug)]
 pub struct GwynethNode<P> {
-    pub provider_factory: P,
+    pub provider: P,
     pub order_input_config: OrderInputConfig,
 }
 
 #[derive(Debug)]
 pub struct Layer2Info<P> {
     pub ipc_providers: Arc<RwLock<HashMap<u64, (RootProvider<PubSubFrontend>, PathBuf)>>>, // Changed to RwLock
-    pub data_dirs: HashMap<u64, PathBuf>,
     pub nodes: HashMap<u64, GwynethNode<P>>,
 }
-
-impl<P> PartialEq for Layer2Info<P> {
-    fn eq(&self, other: &Self) -> bool {
-        self.data_dirs == other.data_dirs
-    }
-}
-
-impl<P> Eq for Layer2Info<P> {}
 
 impl<P> Layer2Info<P>
 where
     P: StateProviderFactory + Clone + 'static,
 {
     pub async fn new(
-        provider_factories: Vec<P>,
-        data_dirs: &Vec<PathBuf>,
+        providers: Vec<P>,
         ipc_paths: &Vec<PathBuf>,
-        server_ports: &Vec<u64>,
+        server_ports: &Vec<u16>,
     ) -> Result<Self> {
-        let mut providers = HashMap::default();
-        let mut data_dirs_map = HashMap::default();
+        let mut ipc_providers = HashMap::default();
         let mut nodes = HashMap::default();
-        for (((provider_factory, data_dir), ipc_path), port) in provider_factories
+        for ((provider, ipc_path), port) in providers
             .iter()
-            .zip(data_dirs.iter())
             .zip(ipc_paths.iter())
             .zip(server_ports.iter())
         {
             let ipc: IpcConnect<_> = IpcConnect::new(ipc_path.clone());
-            let provider = ProviderBuilder::new().on_ipc(ipc).await?;
-            let chain_id = provider.get_chain_id().await?;
-            providers.insert(chain_id, (provider, ipc_path.clone()));
-            data_dirs_map.insert(chain_id, data_dir.clone());
+            let ipc_provider = ProviderBuilder::new().on_ipc(ipc).await?;
+            let chain_id = ipc_provider.get_chain_id().await?;
+            ipc_providers.insert(chain_id, (ipc_provider, ipc_path.clone()));
             nodes.insert(
                 chain_id,
                 GwynethNode::<P> {
-                    provider_factory: provider_factory.clone(),
+                    provider: provider.clone(),
                     order_input_config: OrderInputConfig::new(
                         true,
                         false,
                         ipc_path.clone(),
-                        *port as u16,
+                        *port,
                         Ipv4Addr::new(0, 0, 0, 0),
                         4096,
                         Duration::from_millis(50),
@@ -112,8 +67,7 @@ where
         }
 
         Ok(Self {
-            ipc_providers: Arc::new(RwLock::new(providers)),
-            data_dirs: data_dirs_map,
+            ipc_providers: Arc::new(RwLock::new(ipc_providers)),
             nodes,
         })
     }
@@ -199,10 +153,6 @@ where
         } else {
             Ok(None)
         }
-    }
-
-    pub fn get_data_dir(&self, chain_id: &u64) -> Option<&PathBuf> {
-        self.data_dirs.get(chain_id)
     }
 
     async fn reconnect(

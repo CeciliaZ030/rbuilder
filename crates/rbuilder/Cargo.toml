@@ -36,6 +36,7 @@ reth-evm-ethereum.workspace = true
 revm.workspace = true
 revm-primitives.workspace = true
 revm-inspectors.workspace = true
+gwyneth.workspace = true
 
 alloy-primitives.workspace = true
 alloy-rlp.workspace = true

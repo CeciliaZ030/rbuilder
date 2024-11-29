@@ -13,6 +13,7 @@ use crate::{
 use ahash::HashSet;
 use alloy_primitives::{Address, B256};
 use eyre::{eyre, Context, Result};
+use gwyneth::cli::GwynethArgs;
 use jsonrpsee::RpcModule;
 use lazy_static::lazy_static;
 use reth::tasks::pool::BlockingTaskPool;
@@ -109,12 +110,18 @@ pub struct BaseConfig {
     pub backtest_results_store_path: PathBuf,
     pub backtest_protect_bundle_signers: Vec<Address>,
 
-    // Layer2 related
-    // #[serde_as(as = "Vec<PathBuf>")]
+    /// Layer2 related args
+    /// IPC is necessary for subscribing to EL mempool through `subscribe_to_txpool_with_blobs`
+    /// override from Reth if in-process 🔓
     pub l2_ipc_paths: Vec<PathBuf>,
-    pub l2_reth_datadirs: Vec<PathBuf>,
+    /// Only necessary start EL seperately
+    /// if in-process share instance of [`BlockchainProvider<DB>`] from the Reth L2 Node
+    pub l2_reth_datadirs: Option<Vec<PathBuf>>,
+    /// override from Reth if in-process 🔓
     pub gwyneth_chain_ids: Vec<u64>,
-    pub l2_server_ports: Vec<u64>,
+    /// Ports to accept L2 bundles from `mev_sendBundle` through `start_server_accepting_bundles`
+    /// override from Reth if in-process 🔓
+    pub l2_server_ports: Vec<u16>,
 }
 
 lazy_static! {
@@ -151,6 +158,13 @@ pub fn load_config_toml_and_env<T: serde::de::DeserializeOwned>(
 }
 
 impl BaseConfig {
+    pub fn update_in_process_setting(&mut self, gwyneth_args: &GwynethArgs) {
+        self.l2_ipc_paths = gwyneth_args.ipc_paths.clone();
+        self.l2_reth_datadirs = None;
+        self.l2_server_ports = gwyneth_args.ports.clone();
+        self.gwyneth_chain_ids = gwyneth_args.chain_ids.clone();
+    }
+
     pub fn setup_tracing_subscriber(&self) -> eyre::Result<()> {
         let log_level = self.log_level.value()?;
         let config = LoggerConfig {
@@ -194,7 +208,7 @@ impl BaseConfig {
         SlotSourceType: SlotSource,
     {
         let provider_factory = self.create_provider_factory()?;
-        let l2_provider_factory = self.gwyneth_provider_factories()?;
+        let l2_provider_factory = self.gwyneth_provider_reopeners()?;
         self.create_builder_with_provider_factory::<ProviderFactoryReopener<Arc<DatabaseEnv>>, Arc<DatabaseEnv>, SlotSourceType>(
             cancellation_token,
             sink_factory,
@@ -222,7 +236,6 @@ impl BaseConfig {
         // TODO(Cecilia): get this from exex
         let layer2_info = tokio::runtime::Handle::current().block_on(Layer2Info::<P>::new(
             l2_providers,
-            &self.l2_reth_datadirs,
             &self.l2_ipc_paths,
             &self.l2_server_ports,
         ))?;
@@ -295,10 +308,13 @@ impl BaseConfig {
         )
     }
 
-    pub fn gwyneth_provider_factories(
+    /// Only use reopners when running out-of-process
+    pub fn gwyneth_provider_reopeners(
         &self,
     ) -> eyre::Result<Vec<ProviderFactoryReopener<Arc<DatabaseEnv>>>> {
         self.l2_reth_datadirs
+            .clone()
+            .expect("Datadir not provided to init ProviderFactoryReopener")
             .iter()
             .zip(self.l2_chain_specs()?.iter())
             .map(|(path, chain_spec)| {
@@ -513,9 +529,9 @@ impl Default for BaseConfig {
             sbundle_mergeabe_signers: None,
             //L2 related
             l2_ipc_paths: vec!["/tmp/reth.ipc".into()],
-            l2_reth_datadirs: vec![DEFAULT_RETH_DB_PATH.into()],
+            l2_reth_datadirs: Some(vec![DEFAULT_RETH_DB_PATH.into()]),
             gwyneth_chain_ids: Vec::new(),
-            l2_server_ports: vec![(DEFAULT_INCOMING_BUNDLES_PORT + 1) as u64],
+            l2_server_ports: vec![(DEFAULT_INCOMING_BUNDLES_PORT + 1) as u16],
         }
     }
 }

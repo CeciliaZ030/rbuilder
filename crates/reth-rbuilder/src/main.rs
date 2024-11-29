@@ -34,10 +34,10 @@ fn main() -> eyre::Result<()> {
 
     reth_cli_util::sigsegv_handler::install();
 
-    if let Err(err) = Cli::<GwynethArgs>::parse().run(|builder, ext| async move {
-        let gwyneth_nodes = gwyneth::cli::create_gwyneth_nodes(&ext).await;
+    if let Err(err) = Cli::<GwynethArgs>::parse().run(|builder, arg| async move {
+        let gwyneth_nodes = gwyneth::cli::create_gwyneth_nodes(&arg).await;
 
-        let enable_engine2 = ext.experimental;
+        let enable_engine2 = arg.experimental;
         match enable_engine2 {
             true => {
                 let l2_providers = gwyneth_nodes
@@ -55,7 +55,7 @@ fn main() -> eyre::Result<()> {
                     .with_components(EthereumNode::components())
                     .with_add_ons::<EthereumAddOns>()
                     .on_rpc_started(move |ctx, _| {
-                        spawn_rbuilder(ctx.provider().clone(), l2_providers, ext.rbuilder_config)
+                        spawn_rbuilder(&arg, ctx.provider().clone(), l2_providers)
                     })
                     .install_exex("Rollup", move |ctx| async {
                         Ok(gwyneth::exex::Rollup::new(ctx, gwyneth_nodes)
@@ -93,7 +93,7 @@ fn main() -> eyre::Result<()> {
                             .start())
                     })
                     .on_rpc_started(move |ctx, _| {
-                        spawn_rbuilder(ctx.provider().clone(), l2_providers, ext.rbuilder_config)
+                        spawn_rbuilder(&arg, ctx.provider().clone(), l2_providers)
                     })
                     .launch()
                     .await?;
@@ -111,17 +111,19 @@ fn main() -> eyre::Result<()> {
 ///
 /// Takes down the entire process if the rbuilder errors or stops.
 fn spawn_rbuilder<P, DB>(
+    arg: &GwynethArgs,
     provider: P,
     l2_providers: Vec<P>,
-    config_path: PathBuf,
 ) -> eyre::Result<()>
 where
     DB: Database + Clone + 'static,
     P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
-{
+{        
+    let arg = arg.clone();
     let _handle = task::spawn(async move {
         let result = async {
-            let config: Config = load_config_toml_and_env(config_path)?;
+            let mut config: Config = load_config_toml_and_env(&arg.rbuilder_config)?;
+            config.base_config.update_in_process_setting(&arg);
 
             // TODO: Check removing this is OK. It seems reth already sets up the global tracing
             // subscriber, so this fails
