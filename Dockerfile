@@ -15,10 +15,10 @@ COPY ./revm-inspectors ./revm-inspectors
 RUN pwd && ls
 
 WORKDIR /rbuilder
-RUN cargo build --release
+RUN cargo build --bin gwyneth-rbuilder --release
 
 FROM ubuntu:22.04 AS runtime
-COPY --from=builder /rbuilder/target/release/rbuilder /usr/local/bin
+COPY --from=builder /rbuilder/target/release/gwyneth-rbuilder /usr/local/bin
 COPY ./reth/crates/ethereum/node/tests/assets /network-configs
 RUN cat /network-configs/genesis.json
 WORKDIR /app

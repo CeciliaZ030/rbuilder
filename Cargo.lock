@@ -4011,6 +4011,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "gwyneth-rbuilder"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "eyre",
+ "gwyneth",
+ "libc",
+ "rbuilder",
+ "reth",
+ "reth-cli-commands",
+ "reth-cli-util",
+ "reth-db",
+ "reth-db-api",
+ "reth-db-common",
+ "reth-node-builder",
+ "reth-node-ethereum",
+ "reth-provider",
+ "serde_json",
+ "tikv-jemallocator",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "h2"
 version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9638,30 +9662,6 @@ dependencies = [
  "reth-codecs",
  "serde",
  "thiserror",
-]
-
-[[package]]
-name = "reth-rbuilder"
-version = "0.1.0"
-dependencies = [
- "clap",
- "eyre",
- "gwyneth",
- "libc",
- "rbuilder",
- "reth",
- "reth-cli-commands",
- "reth-cli-util",
- "reth-db",
- "reth-db-api",
- "reth-db-common",
- "reth-node-builder",
- "reth-node-ethereum",
- "reth-provider",
- "serde_json",
- "tikv-jemallocator",
- "tokio",
- "tracing",
 ]
 
 [[package]]

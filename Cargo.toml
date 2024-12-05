@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "crates/rbuilder",
-    "crates/reth-rbuilder",
+    "crates/gwyneth-rbuilder",
     "crates/rbuilder/src/test_utils",
     "crates/rbuilder/src/telemetry/metrics_macros"
 ]

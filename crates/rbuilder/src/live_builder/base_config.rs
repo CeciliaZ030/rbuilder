@@ -16,7 +16,7 @@ use eyre::{eyre, Context, Result};
 use gwyneth::cli::GwynethArgs;
 use jsonrpsee::RpcModule;
 use lazy_static::lazy_static;
-use reth::tasks::pool::BlockingTaskPool;
+use reth::{builder::NodeConfig, tasks::pool::BlockingTaskPool};
 use reth_chainspec::ChainSpec;
 use reth_db::{Database, DatabaseEnv};
 use reth_node_core::args::utils::chain_value_parser;
@@ -113,15 +113,15 @@ pub struct BaseConfig {
     /// Layer2 related args
     /// IPC is necessary for subscribing to EL mempool through `subscribe_to_txpool_with_blobs`
     /// override from Reth if in-process 🔓
-    pub l2_ipc_paths: Vec<PathBuf>,
+    pub l2_ipc_paths: Option<Vec<PathBuf>>,
     /// Only necessary start EL seperately
     /// if in-process share instance of [`BlockchainProvider<DB>`] from the Reth L2 Node
     pub l2_reth_datadirs: Option<Vec<PathBuf>>,
     /// override from Reth if in-process 🔓
-    pub gwyneth_chain_ids: Vec<u64>,
+    pub gwyneth_chain_ids: Option<Vec<u64>>,
     /// Ports to accept L2 bundles from `mev_sendBundle` through `start_server_accepting_bundles`
     /// override from Reth if in-process 🔓
-    pub l2_server_ports: Vec<u16>,
+    pub l2_server_ports: Option<Vec<u16>>,
 }
 
 lazy_static! {
@@ -158,11 +158,20 @@ pub fn load_config_toml_and_env<T: serde::de::DeserializeOwned>(
 }
 
 impl BaseConfig {
-    pub fn update_in_process_setting(&mut self, gwyneth_args: &GwynethArgs) {
-        self.l2_ipc_paths = gwyneth_args.ipc_paths.clone();
+    pub fn update_in_process_setting(
+        &mut self, 
+        gwyneth_args: GwynethArgs,
+        l1_node_config: NodeConfig,
+    ) {
+        let l1_path = l1_node_config.datadir.resolve_datadir(l1_node_config.chain.chain);
+        self.reth_datadir = Some(l1_path.data_dir().into());
+        self.reth_db_path = Some(l1_path.db().into());
+        self.el_node_ipc_path = l1_node_config.rpc.ipcpath.into();
+
+        self.l2_ipc_paths = Some(gwyneth_args.ipc_paths);
         self.l2_reth_datadirs = None;
-        self.l2_server_ports = gwyneth_args.ports.clone();
-        self.gwyneth_chain_ids = gwyneth_args.chain_ids.clone();
+        self.l2_server_ports = Some(gwyneth_args.ports);
+        self.gwyneth_chain_ids = Some(gwyneth_args.chain_ids);
     }
 
     pub fn setup_tracing_subscriber(&self) -> eyre::Result<()> {
@@ -233,11 +242,14 @@ impl BaseConfig {
         P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
         SlotSourceType: SlotSource,
     {
+        if self.l2_ipc_paths.is_none() {
+            eyre::bail!("IPC should be provided with config or in-process GwynethArgs");
+        }
         // TODO(Cecilia): get this from exex
         let layer2_info = tokio::runtime::Handle::current().block_on(Layer2Info::<P>::new(
             l2_providers,
-            &self.l2_ipc_paths,
-            &self.l2_server_ports,
+            &self.l2_ipc_paths.clone().unwrap(),
+            &self.l2_server_ports.clone().unwrap(),
         ))?;
         Ok(LiveBuilder::<P, DB, SlotSourceType> {
             watchdog_timeout: self.watchdog_timeout(),
@@ -295,6 +307,7 @@ impl BaseConfig {
         self.sbundle_mergeabe_signers.clone().unwrap_or_default()
     }
 
+    /// Only use reopners when running out-of-process
     /// Open reth db and DB should be opened once per process but it can be cloned and moved to different threads.
     pub fn create_provider_factory(
         &self,
@@ -528,10 +541,10 @@ impl Default for BaseConfig {
             simulation_threads: 1,
             sbundle_mergeabe_signers: None,
             //L2 related
-            l2_ipc_paths: vec!["/tmp/reth.ipc".into()],
-            l2_reth_datadirs: Some(vec![DEFAULT_RETH_DB_PATH.into()]),
-            gwyneth_chain_ids: Vec::new(),
-            l2_server_ports: vec![(DEFAULT_INCOMING_BUNDLES_PORT + 1) as u16],
+            l2_ipc_paths: None,
+            l2_reth_datadirs: None,
+            gwyneth_chain_ids: None,
+            l2_server_ports: None,
         }
     }
 }

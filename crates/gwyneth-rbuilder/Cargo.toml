@@ -1,5 +1,5 @@
 [package]
-name = "reth-rbuilder"
+name = "gwyneth-rbuilder"
 version.workspace = true
 edition.workspace = true
 

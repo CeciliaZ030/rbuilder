@@ -13,7 +13,7 @@ use rbuilder::{
     telemetry,
 };
 use reth_db_api::Database;
-use reth_node_builder::EngineNodeLauncher;
+use reth_node_builder::{EngineNodeLauncher, NodeConfig};
 use reth_provider::{
     providers::{BlockchainProvider, BlockchainProvider2},
     DatabaseProviderFactory, HeaderProvider, StateProviderFactory,
@@ -36,6 +36,7 @@ fn main() -> eyre::Result<()> {
 
     if let Err(err) = Cli::<GwynethArgs>::parse().run(|builder, arg| async move {
         let gwyneth_nodes = gwyneth::cli::create_gwyneth_nodes(&arg).await;
+        let l1_node_config = builder.config().clone();
 
         let enable_engine2 = arg.experimental;
         match enable_engine2 {
@@ -49,13 +50,13 @@ fn main() -> eyre::Result<()> {
                         GwynethFullNode::Provider2(n) => n.provider.clone(),
                     })
                     .collect::<Vec<_>>();
-
+                
                 let handle = builder
                     .with_types_and_provider::<EthereumNode, BlockchainProvider2<_>>()
                     .with_components(EthereumNode::components())
                     .with_add_ons::<EthereumAddOns>()
                     .on_rpc_started(move |ctx, _| {
-                        spawn_rbuilder(&arg, ctx.provider().clone(), l2_providers)
+                        spawn_rbuilder(&arg, &l1_node_config, ctx.provider().clone(), l2_providers)
                     })
                     .install_exex("Rollup", move |ctx| async {
                         Ok(gwyneth::exex::Rollup::new(ctx, gwyneth_nodes)
@@ -93,7 +94,7 @@ fn main() -> eyre::Result<()> {
                             .start())
                     })
                     .on_rpc_started(move |ctx, _| {
-                        spawn_rbuilder(&arg, ctx.provider().clone(), l2_providers)
+                        spawn_rbuilder(&arg, &l1_node_config, ctx.provider().clone(), l2_providers)
                     })
                     .launch()
                     .await?;
@@ -112,6 +113,7 @@ fn main() -> eyre::Result<()> {
 /// Takes down the entire process if the rbuilder errors or stops.
 fn spawn_rbuilder<P, DB>(
     arg: &GwynethArgs,
+    l1_node_config: &NodeConfig,
     provider: P,
     l2_providers: Vec<P>,
 ) -> eyre::Result<()>
@@ -120,10 +122,11 @@ where
     P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
 {        
     let arg = arg.clone();
+    let l1_node_config = l1_node_config.clone();
     let _handle = task::spawn(async move {
         let result = async {
             let mut config: Config = load_config_toml_and_env(&arg.rbuilder_config)?;
-            config.base_config.update_in_process_setting(&arg);
+            config.base_config.update_in_process_setting(arg, l1_node_config);
 
             // TODO: Check removing this is OK. It seems reth already sets up the global tracing
             // subscriber, so this fails
