@@ -125,7 +125,9 @@ where
     let l1_node_config = l1_node_config.clone();
     let _handle = task::spawn(async move {
         let result = async {
-            let mut config: Config = load_config_toml_and_env(&arg.rbuilder_config)?;
+            let mut config: Config = load_config_toml_and_env(
+                arg.rbuilder_config.clone().expect("Gwyneth-rbuilder needs config path")
+            )?;
             config.base_config.update_in_process_setting(arg, l1_node_config);
 
             // TODO: Check removing this is OK. It seems reth already sets up the global tracing
