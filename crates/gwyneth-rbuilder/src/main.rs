@@ -35,7 +35,7 @@ fn main() -> eyre::Result<()> {
     reth_cli_util::sigsegv_handler::install();
 
     if let Err(err) = Cli::<GwynethArgs>::parse().run(|builder, arg| async move {
-        let gwyneth_nodes = gwyneth::cli::create_gwyneth_nodes(&arg).await;
+        let gwyneth_nodes = gwyneth::cli::create_gwyneth_nodes(&arg, builder.config()).await;
         let l1_node_config = builder.config().clone();
 
         let enable_engine2 = arg.experimental;

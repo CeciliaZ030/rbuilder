@@ -168,9 +168,20 @@ impl BaseConfig {
         self.reth_db_path = Some(l1_path.db().into());
         self.el_node_ipc_path = l1_node_config.rpc.ipcpath.into();
 
-        self.l2_ipc_paths = Some(gwyneth_args.ipc_paths);
+        // Override the config.toml with in-process args
         self.l2_reth_datadirs = None;
-        self.l2_server_ports = Some(gwyneth_args.ports);
+        self.l2_ipc_paths = match (self.l2_ipc_paths.clone(), gwyneth_args.ipc_paths) {
+            (None, None) => panic!("IPC should be provided with config or in-process GwynethArgs"),
+            (None, Some(paths)) => Some(paths),
+            (Some(paths), None) => Some(paths),
+            (Some(paths), Some(_)) => Some(paths),
+        };
+        self.l2_server_ports = match (self.l2_server_ports.clone(), gwyneth_args.ports) {
+            (None, None) => panic!("Ports should be provided with config or in-process GwynethArgs"),
+            (None, Some(ports)) => Some(ports),
+            (Some(ports), None) => Some(ports),
+            (Some(paths), Some(_)) => Some(paths),
+        };
         self.gwyneth_chain_ids = Some(gwyneth_args.chain_ids);
     }
 

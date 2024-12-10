@@ -24,4 +24,4 @@ RUN cat /network-configs/genesis.json
 WORKDIR /app
 # RUN rbuilder
 
-ENTRYPOINT ["/usr/local/bin/rbuilder"]
+ENTRYPOINT ["/usr/local/bin/gwyneth-rbuilder"]
