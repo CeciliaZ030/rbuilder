@@ -6,12 +6,13 @@
 //! See <https://github.com/flashbots/rbuilder/issues/229> for more information.
 
 use gwyneth::{
-    cli::GwynethArgs, exex::GwynethFullNode,
+    cli::{create_gwyneth_nodes, GwynethArgs}, exex::GwynethFullNode,
 };
 use rbuilder::{
     live_builder::{base_config::load_config_toml_and_env, cli::LiveBuilderConfig, config::Config},
     telemetry,
 };
+use reth::rpc::api::NetApiClient;
 use reth_db_api::Database;
 use reth_node_builder::{EngineNodeLauncher, NodeConfig};
 use reth_provider::{
@@ -35,8 +36,12 @@ fn main() -> eyre::Result<()> {
     reth_cli_util::sigsegv_handler::install();
 
     if let Err(err) = Cli::<GwynethArgs>::parse().run(|builder, arg| async move {
-        let gwyneth_nodes = gwyneth::cli::create_gwyneth_nodes(&arg, builder.config()).await;
         let l1_node_config = builder.config().clone();
+        let gwyneth_nodes = create_gwyneth_nodes(
+            &arg, 
+            builder.task_executor().clone(),
+            &l1_node_config
+        ).await;
 
         let enable_engine2 = arg.experimental;
         match enable_engine2 {
