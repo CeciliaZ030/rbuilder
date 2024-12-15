@@ -34,7 +34,7 @@ pub struct RelayConfig {
     #[serde(default, deserialize_with = "deserialize_env_var")]
     pub l1_rpc_url: Option<String>,
     pub l1_proposer_pk: Option<String>,
-    pub l1_smart_contract_address: Option<String>,
+    pub l1_rollup_contract: Option<String>,
 }
 
 impl RelayConfig {
@@ -93,7 +93,7 @@ impl MevBoostRelay {
         let block_proposer =
             if let (Some(l1_rpc_url), Some(l1_smart_contract_address), Some(l1_proposer_pk)) = (
                 &config.l1_rpc_url,
-                &config.l1_smart_contract_address,
+                &config.l1_rollup_contract,
                 &config.l1_proposer_pk,
             ) {
                 Some(BlockProposer::new(

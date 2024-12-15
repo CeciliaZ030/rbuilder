@@ -256,7 +256,6 @@ impl BaseConfig {
         if self.l2_ipc_paths.is_none() {
             eyre::bail!("IPC should be provided with config or in-process GwynethArgs");
         }
-        // TODO(Cecilia): get this from exex
         let layer2_info = tokio::runtime::Handle::current().block_on(Layer2Info::<P>::new(
             l2_providers,
             &self.l2_ipc_paths.clone().unwrap(),

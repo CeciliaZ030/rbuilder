@@ -37,11 +37,8 @@ fn main() -> eyre::Result<()> {
 
     if let Err(err) = Cli::<GwynethArgs>::parse().run(|builder, arg| async move {
         let l1_node_config = builder.config().clone();
-        let gwyneth_nodes = create_gwyneth_nodes(
-            &arg, 
-            builder.task_executor().clone(),
-            &l1_node_config
-        ).await;
+        let task_executor = builder.task_executor().clone();
+        let gwyneth_nodes = create_gwyneth_nodes(&arg, task_executor.clone(), &l1_node_config).await;
 
         let enable_engine2 = arg.experimental;
         match enable_engine2 {
@@ -70,7 +67,7 @@ fn main() -> eyre::Result<()> {
                     })
                     .launch_with_fn(|builder| {
                         let launcher = EngineNodeLauncher::new(
-                            builder.task_executor().clone(),
+                            task_executor,
                             builder.config().datadir(),
                         );
                         builder.launch_with(launcher)
@@ -133,6 +130,8 @@ where
             let mut config: Config = load_config_toml_and_env(
                 arg.rbuilder_config.clone().expect("Gwyneth-rbuilder needs config path")
             )?;
+            // Where we set L1 rpc, proposer pk and rollup contract address
+            config.l1_config.update_in_process_setting(&l1_node_config);
             config.base_config.update_in_process_setting(arg, l1_node_config);
 
             // TODO: Check removing this is OK. It seems reth already sets up the global tracing

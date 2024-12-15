@@ -51,7 +51,7 @@ use ethereum_consensus::{
     state_transition::Context as ContextEth,
 };
 use eyre::Context;
-use reth::tasks::pool::BlockingTaskPool;
+use reth::{builder::NodeConfig, tasks::pool::BlockingTaskPool};
 use reth_chainspec::{Chain, ChainSpec, NamedChain};
 use reth_db::{Database, DatabaseEnv};
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
@@ -61,7 +61,7 @@ use reth_provider::{
 };
 use serde::Deserialize;
 use serde_with::{serde_as, OneOrMany};
-use std::fmt::Debug;
+use std::{fmt::Debug, net::SocketAddr};
 use std::{
     path::{Path, PathBuf},
     str::FromStr,
@@ -158,6 +158,19 @@ impl Default for L1Config {
 }
 
 impl L1Config {
+
+    pub fn update_in_process_setting(
+        &mut self, 
+        l1_node_config: &NodeConfig,
+    ) {
+        assert!(!self.relays.is_empty(), "Must contains at least one relay for L1 proposing");
+        let relay_proposer = self.relays.get_mut(0).unwrap();
+
+        assert!(relay_proposer.l1_proposer_pk.is_some(), "L1 proposer private key should be set");
+        assert!(relay_proposer.l1_rollup_contract.is_some(), "L1 rollup contract should be set");    
+        relay_proposer.l1_rpc_url = Some(SocketAddr::new(l1_node_config.rpc.http_addr, l1_node_config.rpc.http_port).to_string());
+    }
+
     pub fn resolve_cl_node_urls(&self) -> eyre::Result<Vec<String>> {
         crate::live_builder::base_config::resolve_env_or_values::<String>(&self.cl_node_url)
     }
