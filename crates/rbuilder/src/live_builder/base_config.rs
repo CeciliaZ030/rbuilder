@@ -2,7 +2,7 @@
 //!
 use crate::{
     building::builders::UnfinishedBlockBuildingSinkFactory,
-    live_builder::{order_input::OrderInputConfig, LiveBuilder},
+    live_builder::{gwyneth::MempoolListener, order_input::OrderInputConfig, LiveBuilder},
     roothash::RootHashConfig,
     telemetry::{setup_reloadable_tracing_subscriber, LoggerConfig},
     utils::{
@@ -10,13 +10,13 @@ use crate::{
         ProviderFactoryReopener, ProviderFactoryUnchecked, Signer,
     },
 };
-use ahash::HashSet;
+use ahash::{HashMap, HashSet};
 use alloy_primitives::{Address, B256};
 use eyre::{eyre, Context, Result};
 use gwyneth::cli::GwynethArgs;
 use jsonrpsee::RpcModule;
 use lazy_static::lazy_static;
-use reth::{builder::NodeConfig, tasks::pool::BlockingTaskPool};
+use reth::{builder::NodeConfig, tasks::pool::BlockingTaskPool, transaction_pool::{EthPooledTransaction, NewTransactionEvent}};
 use reth_chainspec::ChainSpec;
 use reth_db::{Database, DatabaseEnv};
 use reth_node_core::args::utils::chain_value_parser;
@@ -27,6 +27,7 @@ use reth_provider::{
 use serde::{Deserialize, Deserializer};
 use serde_with::{serde_as, DeserializeAs};
 use sqlx::PgPool;
+use tokio::sync::mpsc::Receiver;
 use std::{
     env::var,
     fs::read_to_string,
@@ -38,7 +39,7 @@ use std::{
 };
 use tracing::warn;
 
-use super::SlotSource;
+use super::{gwyneth::{GwynethMempoolReciever, GwynethNodes}, SlotSource};
 
 use crate::live_builder::Layer2Info;
 
@@ -50,7 +51,7 @@ const ENV_PREFIX: &str = "env:";
 /// The final configuration should usually include one of this and use it to create the base LiveBuilder to then upgrade it as needed.
 #[serde_as]
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-#[serde(default, deny_unknown_fields)]
+#[serde(default)]
 pub struct BaseConfig {
     pub full_telemetry_server_port: u16,
     pub full_telemetry_server_ip: Option<String>,
@@ -229,38 +230,58 @@ impl BaseConfig {
     {
         let provider_factory = self.create_provider_factory()?;
         let l2_provider_factory = self.gwyneth_provider_reopeners()?;
-        self.create_builder_with_provider_factory::<ProviderFactoryReopener<Arc<DatabaseEnv>>, Arc<DatabaseEnv>, SlotSourceType>(
+        self.create_in_process_builder::<ProviderFactoryReopener<Arc<DatabaseEnv>>, Arc<DatabaseEnv>, SlotSourceType>(
             cancellation_token,
             sink_factory,
             slot_source,
             provider_factory,
-            l2_provider_factory
+            l2_provider_factory,
+            None,
+            None,
         )
         .await
     }
 
     /// Allows instantiating a [`LiveBuilder`] with an existing provider factory
-    pub async fn create_builder_with_provider_factory<P, DB, SlotSourceType>(
+    pub async fn create_in_process_builder<P, DB, SlotSourceType>(
         &self,
         cancellation_token: tokio_util::sync::CancellationToken,
         sink_factory: Box<dyn UnfinishedBlockBuildingSinkFactory>,
         slot_source: SlotSourceType,
         provider: P,
         l2_providers: Vec<P>,
+        l1_mempool: Option<GwynethMempoolReciever>,
+        mempools: Option<Vec<GwynethMempoolReciever>>,
     ) -> eyre::Result<super::LiveBuilder<P, DB, SlotSourceType>>
     where
         DB: Database + Clone + 'static,
         P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
         SlotSourceType: SlotSource,
     {
+        println!("Cecilia ==> BaseConfig::create_in_process_builder");
         if self.l2_ipc_paths.is_none() {
             eyre::bail!("IPC should be provided with config or in-process GwynethArgs");
         }
-        let layer2_info = tokio::runtime::Handle::current().block_on(Layer2Info::<P>::new(
-            l2_providers,
-            &self.l2_ipc_paths.clone().unwrap(),
-            &self.l2_server_ports.clone().unwrap(),
-        ))?;
+        let (gwyneth_nodes, layer2_info) = if let Some(mempools) = mempools {
+            (
+                GwynethNodes::new(l2_providers, mempools, self.l2_server_ports.clone().unwrap())?,
+                Layer2Info {
+                    nodes: HashMap::default(),
+                    ipc_providers: Arc::new(std::sync::RwLock::new(HashMap::default())),
+                }
+            )
+        } else {
+            (
+                GwynethNodes {
+                    nodes: HashMap::default(),
+                },
+                tokio::runtime::Handle::current().block_on(Layer2Info::<P>::new(
+                    l2_providers.clone(),
+                    &self.l2_ipc_paths.clone().unwrap(),
+                    &self.l2_server_ports.clone().unwrap(),
+                ))?
+            )
+        };
         Ok(LiveBuilder::<P, DB, SlotSourceType> {
             watchdog_timeout: self.watchdog_timeout(),
             error_storage_path: self.error_storage_path.clone(),
@@ -275,6 +296,7 @@ impl BaseConfig {
             blocklist: self.blocklist()?,
 
             global_cancellation: cancellation_token,
+            l1_mempool: l1_mempool.map(MempoolListener::new),
 
             extra_rpc: RpcModule::new(()),
             sink_factory,
@@ -282,6 +304,7 @@ impl BaseConfig {
 
             run_sparse_trie_prefetcher: self.root_hash_use_sparse_trie,
             layer2_info,
+            gwyneth_nodes,
         })
     }
 

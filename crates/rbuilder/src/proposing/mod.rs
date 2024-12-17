@@ -79,12 +79,6 @@ impl BlockProposer {
         };
         let propose_data = propose_data.abi_encode();
 
-        // if num_txs == 1 {
-        //     println!("skip propose");
-        //     // If there's only the payout tx, don't propose
-        //     return Ok(());
-        // }
-
         let decoded_transactions: Vec<TransactionSigned> = decode_transactions(&meta.txList);
         println!("decoded_transactions: {:?}", decoded_transactions);
 

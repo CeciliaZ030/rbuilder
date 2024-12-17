@@ -12,7 +12,7 @@ use super::{
         },
         block_sealing_bidder_factory::BlockSealingBidderFactory,
         relay_submit::{RelaySubmitSinkFactory, SubmissionConfig},
-    },
+    }, gwyneth::GwynethMempoolReciever,
 };
 use crate::{
     beacon_api_client::Client,
@@ -311,14 +311,20 @@ impl LiveBuilderConfig for Config {
     }
     async fn new_builder<P, DB>(
         &self,
+        
         provider: P,
         l2_providers: Vec<P>,
+        l1_mempool: Option<GwynethMempoolReciever>,
+        mempools: Option<Vec<GwynethMempoolReciever>>,
         cancellation_token: tokio_util::sync::CancellationToken,
     ) -> eyre::Result<super::LiveBuilder<P, DB, MevBoostSlotDataGenerator>>
     where
         DB: Database + Clone + 'static,
         P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
     {
+        // println!("Cecilia ==> LiveBuilderConfig::new_builder {:?}", mempools.as_ref().unwrap().len());
+        println!("Cecilia ==> LiveBuilderConfig::new_builder");
+
         let (sink_sealed_factory, relays) = self.l1_config.create_relays_sealed_sink_factory(
             self.base_config.chain_spec()?,
             Box::new(NullBidObserver {}),
@@ -348,12 +354,14 @@ impl LiveBuilderConfig for Config {
         );
         let live_builder = self
             .base_config
-            .create_builder_with_provider_factory(
+            .create_in_process_builder(
                 cancellation_token,
                 sink_factory,
                 payload_event,
                 provider,
                 l2_providers,
+                l1_mempool,
+                mempools
             )
             .await?;
         let root_hash_config = self.base_config.live_root_hash_config()?;

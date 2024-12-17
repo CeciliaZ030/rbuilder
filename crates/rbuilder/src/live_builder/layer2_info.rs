@@ -22,7 +22,7 @@ pub struct GwynethNode<P> {
     pub order_input_config: OrderInputConfig,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Layer2Info<P> {
     pub ipc_providers: Arc<RwLock<HashMap<u64, (RootProvider<PubSubFrontend>, PathBuf)>>>, // Changed to RwLock
     pub nodes: HashMap<u64, GwynethNode<P>>,

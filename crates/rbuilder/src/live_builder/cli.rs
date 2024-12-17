@@ -18,7 +18,7 @@ use crate::{
     utils::build_info::Version,
 };
 
-use super::{base_config::BaseConfig, LiveBuilder};
+use super::{base_config::BaseConfig, gwyneth::GwynethMempoolReciever, LiveBuilder};
 
 #[derive(Parser, Debug)]
 enum Cli {
@@ -49,6 +49,8 @@ pub trait LiveBuilderConfig: Debug + DeserializeOwned + Sync {
         &self,
         provider: P,
         l2_providers: Vec<P>,
+        l1_mempoool: Option<GwynethMempoolReciever>,
+        mempools: Option<Vec<GwynethMempoolReciever>>,
         cancellation_token: CancellationToken,
     ) -> impl std::future::Future<Output = eyre::Result<LiveBuilder<P, DB, MevBoostSlotDataGenerator>>>
            + Send
@@ -109,7 +111,7 @@ where
     // For out-of-process builders only
     let l2_providers = config.base_config().gwyneth_provider_reopeners()?;
     let builder = config
-        .new_builder(provider, l2_providers, cancel.clone())
+        .new_builder(provider, l2_providers, None, None, cancel.clone())
         .await?;
 
     let ctrlc = tokio::spawn(async move {

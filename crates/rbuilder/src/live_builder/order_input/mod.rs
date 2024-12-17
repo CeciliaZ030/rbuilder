@@ -7,12 +7,13 @@ pub mod orderpool;
 pub mod replaceable_order_sink;
 pub mod rpc_server;
 pub mod txpool_fetcher;
+pub mod mempool_fetcher;
 
 use self::{
     orderpool::{OrderPool, OrderPoolSubscriptionId},
     replaceable_order_sink::ReplaceableOrderSink,
 };
-use crate::primitives::{serialize::CancelShareBundle, BundleReplacementKey, Order};
+use crate::{backtest::fetch::mempool, primitives::{serialize::CancelShareBundle, BundleReplacementKey, Order}};
 use jsonrpsee::RpcModule;
 use reth_provider::StateProviderFactory;
 use std::{
@@ -25,7 +26,7 @@ use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, trace, warn};
 
-use super::base_config::BaseConfig;
+use super::{base_config::BaseConfig, gwyneth::MempoolListener};
 
 /// Thread safe access to OrderPool to get orderflow
 #[derive(Debug)]
@@ -173,6 +174,7 @@ impl ReplaceableOrderPoolCommand {
     }
 }
 
+// Cecilia!
 /// Starts all the tokio tasks to handle order flow:
 /// - Mempool
 /// - RPC
@@ -182,13 +184,14 @@ impl ReplaceableOrderPoolCommand {
 pub async fn start_orderpool_jobs<P>(
     config: OrderInputConfig,
     provider_factory: P,
+    mempool: Option<MempoolListener>,
     extra_rpc: RpcModule<()>,
     global_cancel: CancellationToken,
 ) -> eyre::Result<(JoinHandle<()>, OrderPoolSubscriber)>
 where
     P: StateProviderFactory + 'static,
 {
-    println!("Dani debug: start_orderpool_jobs");
+    println!("Cecilia ==> start_orderpool_jobs");
     if config.ignore_cancellable_orders {
         warn!("ignore_cancellable_orders is set to true, some order input is ignored");
     }
@@ -217,12 +220,19 @@ where
         global_cancel.clone(),
     )
     .await?;
-    let txpool_fetcher = txpool_fetcher::subscribe_to_txpool_with_blobs(
-        config.clone(),
-        order_sender.clone(),
-        global_cancel.clone(),
-    )
-    .await?;
+    let txpool_fetcher = match mempool {
+        Some(mempool) => mempool_fetcher::subscribe_to_mempool_with_blobs(
+            config.clone(),
+            mempool.clone(),
+            order_sender.clone(),
+            global_cancel.clone(),
+        ).await?,
+        None => txpool_fetcher::subscribe_to_txpool_with_blobs(
+            config.clone(),
+            order_sender.clone(),
+            global_cancel.clone(),
+        ).await?
+    };
 
     let handle = tokio::spawn(async move {
         info!("OrderPoolJobs: started");

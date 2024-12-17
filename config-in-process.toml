@@ -7,8 +7,8 @@ redacted_telemetry_server_ip = "0.0.0.0"
 full_telemetry_server_port = 6060
 full_telemetry_server_ip = "0.0.0.0"
 
-chain = "/network-configs/genesis.json"
-
+# chain = "/network-configs/genesis.json"
+chain = "../../genesis.json" # running from ./target/debug
 # Doesn't matter cuz we override it
 # ===================
 reth_datadir = "/data/reth/execution-data"
@@ -56,9 +56,8 @@ url = "http://0xac6e77dfe25ecd6110b8e780608cce0dab71fdd5ebea22a16c0205200f2f8e2e
 priority = 0
 use_ssz_for_submit = false
 use_gzip_for_submit = false
-l1_rpc_url =  "http://172.16.32.10:8545"
 l1_proposer_pk = "39725efee3fb28614de3bacaffe4cc4bd8c436257e2c8bb887c4b5c4be45e76d"
-l1_smart_contract_address = "0x9fCF7D13d10dEdF17d0f24C62f0cf4ED462f65b7"
+l1_rollup_contract = "0x9fCF7D13d10dEdF17d0f24C62f0cf4ED462f65b7"
 
 [[builders]]
 name = "mgp-ordering"

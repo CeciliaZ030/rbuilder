@@ -26,26 +26,29 @@ pub async fn spawn_clean_orderpool_job<P>(
 where
     P: StateProviderFactory + 'static,
 {
-    let ipc = IpcConnect::new(config.ipc_path);
-    let provider = ProviderBuilder::new().on_ipc(ipc).await?;
+    // let ipc = IpcConnect::new(config.ipc_path);
+    // let provider = ProviderBuilder::new().on_ipc(ipc).await?;
 
     let handle = tokio::spawn(async move {
         info!("Clean orderpool job: started");
 
-        let new_block_stream = match provider.subscribe_blocks().await {
-            Ok(subscription) => subscription
-                .into_stream()
-                .take_until(global_cancellation.cancelled()),
-            Err(err) => {
-                error!("Failed to subscribe to a new block stream: {:?}", err);
-                global_cancellation.cancel();
-                return;
-            }
-        };
-        let mut new_block_stream = pin!(new_block_stream);
-
-        while let Some(block) = new_block_stream.next().await {
-            let block_number = block.header.number;
+        // let new_block_stream = match provider.subscribe_blocks().await {
+        //     Ok(subscription) => subscription
+        //         .into_stream()
+        //         .take_until(global_cancellation.cancelled()),
+        //     Err(err) => {
+        //         error!("Failed to subscribe to a new block stream: {:?}", err);
+        //         global_cancellation.cancel();
+        //         return;
+        //     }
+        // };
+        // let mut new_block_stream = pin!(new_block_stream);
+        let mut block_number = provider_factory.last_block_number().unwrap();
+        loop {
+            if provider_factory.last_block_number().unwrap() == block_number {
+                continue;
+            } 
+            block_number = provider_factory.last_block_number().unwrap();
             set_current_block(block_number);
             let state = match provider_factory.latest() {
                 Ok(state) => state,
@@ -72,7 +75,7 @@ where
                 "Cleaned orderpool",
             );
         }
-
+        
         global_cancellation.cancel();
         info!("Clean orderpool job: finished");
     });

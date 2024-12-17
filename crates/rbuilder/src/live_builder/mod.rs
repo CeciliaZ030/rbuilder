@@ -8,6 +8,7 @@ pub mod order_input;
 pub mod payload_events;
 pub mod simulation;
 pub mod watchdog;
+pub mod gwyneth;
 
 use crate::{
     building::{
@@ -28,6 +29,7 @@ use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, B256, U256};
 use building::BlockBuildingPool;
 use eyre::Context;
+use gwyneth::{GwynethNodes, MempoolListener};
 use jsonrpsee::RpcModule;
 use payload_events::MevBoostSlotData;
 use reth::{primitives::Header, providers::HeaderProvider};
@@ -82,11 +84,13 @@ where
     pub blocklist: HashSet<Address>,
 
     pub global_cancellation: CancellationToken,
+    pub l1_mempool: Option<MempoolListener>,
 
     pub sink_factory: Box<dyn UnfinishedBlockBuildingSinkFactory>,
     pub builders: Vec<Arc<dyn BlockBuildingAlgorithm<P, DB>>>,
     pub extra_rpc: RpcModule<()>,
     pub layer2_info: Layer2Info<P>,
+    pub gwyneth_nodes: GwynethNodes<P>,
 }
 
 impl<P, DB, BlocksSourceType: SlotSource> LiveBuilder<P, DB, BlocksSourceType>
@@ -104,6 +108,7 @@ where
     }
 
     pub async fn run(self) -> eyre::Result<()> {
+        println!("Cecilia ==> LiveBuilder::run");
         info!("Builder block list size: {}", self.blocklist.len(),);
         info!(
             "Builder coinbase address: {:?}",
@@ -119,11 +124,13 @@ where
         let mut inner_jobs_handles = Vec::new();
         let mut payload_events_channel = self.blocks_source.recv_slot_channel();
 
+        // Cecilia!: call start_orderpool_jobs L1
         let mut orderpool_subscribers = HashMap::default();
         let orderpool_subscriber = {
             let (handle, sub) = start_orderpool_jobs(
                 self.order_input_config,
                 self.provider.clone(),
+                self.l1_mempool.clone(),
                 self.extra_rpc,
                 self.global_cancellation.clone(),
             )
@@ -136,11 +143,13 @@ where
         let mut providers = HashMap::default();
         providers.insert(self.chain_chain_spec.chain.id(), self.provider.clone());
 
-        for (chain_id, node) in self.layer2_info.nodes.iter() {
+        // Cecilia!: call start_orderpool_jobs L2
+        for (chain_id, node) in self.gwyneth_nodes.nodes.iter() {
             let orderpool_subscriber = {
                 let (handle, sub) = start_orderpool_jobs(
                     node.order_input_config.clone(),
                     node.provider.clone(),
+                    Some(node.mempool_listener.clone()),
                     RpcModule::new(()),
                     self.global_cancellation.clone(),
                 )

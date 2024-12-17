@@ -9,19 +9,19 @@ use gwyneth::{
     cli::{create_gwyneth_nodes, GwynethArgs}, exex::GwynethFullNode,
 };
 use rbuilder::{
-    live_builder::{base_config::load_config_toml_and_env, cli::LiveBuilderConfig, config::Config},
+    live_builder::{base_config::load_config_toml_and_env, cli::LiveBuilderConfig, config::Config, gwyneth::{EthApiStream, GwynethMempoolReciever}},
     telemetry,
 };
-use reth::rpc::api::NetApiClient;
+use reth::{network::NetworkEventListenerProvider, rpc::{api::NetApiClient, eth::EthApiServer}, transaction_pool::TransactionPool};
 use reth_db_api::Database;
 use reth_node_builder::{EngineNodeLauncher, NodeConfig};
 use reth_provider::{
     providers::{BlockchainProvider, BlockchainProvider2},
     DatabaseProviderFactory, HeaderProvider, StateProviderFactory,
 };
-use std::{path::PathBuf, process};
+use std::{path::PathBuf, pin::pin, process};
 use tokio::task;
-use tracing::error;
+use tracing::{error, instrument::WithSubscriber};
 
 // Prefer jemalloc for performance reasons.
 #[cfg(all(feature = "jemalloc", unix))]
@@ -39,6 +39,21 @@ fn main() -> eyre::Result<()> {
         let l1_node_config = builder.config().clone();
         let task_executor = builder.task_executor().clone();
         let gwyneth_nodes = create_gwyneth_nodes(&arg, task_executor.clone(), &l1_node_config).await;
+        let gwyneth_mempools = gwyneth_nodes
+            .iter()
+            .map(|g| match g {
+                GwynethFullNode::Provider1(n) => n.pool.new_transactions_listener(),
+                GwynethFullNode::Provider2(n) => n.pool.new_transactions_listener(),
+            })
+            .collect::<Vec<_>>();
+
+        let l2_ethapis = gwyneth_nodes
+            .iter()
+            .map(|g| match g {
+                GwynethFullNode::Provider1(n) => n.rpc_registry.eth_handlers().pubsub,
+                GwynethFullNode::Provider2(n) => n.rpc_registry.eth_handlers().pubsub,
+            })
+            .collect::<Vec<_>>();
 
         let enable_engine2 = arg.experimental;
         match enable_engine2 {
@@ -58,7 +73,10 @@ fn main() -> eyre::Result<()> {
                     .with_components(EthereumNode::components())
                     .with_add_ons::<EthereumAddOns>()
                     .on_rpc_started(move |ctx, _| {
-                        spawn_rbuilder(&arg, &l1_node_config, ctx.provider().clone(), l2_providers)
+                        println!("Cecilia ==> on_rpc_started");
+                        let l1_ethapi = ctx.registry.eth_handlers().pubsub;
+\                       let l1_mempool = ctx.node().components.transaction_pool.new_transactions_listener();
+                        spawn_rbuilder(&arg, &l1_node_config, ctx.provider().clone(), l2_providers, l1_mempool, gwyneth_mempools)
                     })
                     .install_exex("Rollup", move |ctx| async {
                         Ok(gwyneth::exex::Rollup::new(ctx, gwyneth_nodes)
@@ -96,7 +114,8 @@ fn main() -> eyre::Result<()> {
                             .start())
                     })
                     .on_rpc_started(move |ctx, _| {
-                        spawn_rbuilder(&arg, &l1_node_config, ctx.provider().clone(), l2_providers)
+                        let l1_mempool = ctx.node().components.transaction_pool.new_transactions_listener();
+                        spawn_rbuilder(&arg, &l1_node_config, ctx.provider().clone(), l2_providers, l1_mempool, gwyneth_mempools)
                     })
                     .launch()
                     .await?;
@@ -118,11 +137,14 @@ fn spawn_rbuilder<P, DB>(
     l1_node_config: &NodeConfig,
     provider: P,
     l2_providers: Vec<P>,
+    l1_mempool: GwynethMempoolReciever,
+    mempools: Vec<GwynethMempoolReciever>
 ) -> eyre::Result<()>
 where
     DB: Database + Clone + 'static,
     P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
 {        
+    println!("Cecilia ==> spawn_rbuilder");
     let arg = arg.clone();
     let l1_node_config = l1_node_config.clone();
     let _handle = task::spawn(async move {
@@ -133,10 +155,6 @@ where
             // Where we set L1 rpc, proposer pk and rollup contract address
             config.l1_config.update_in_process_setting(&l1_node_config);
             config.base_config.update_in_process_setting(arg, l1_node_config);
-
-            // TODO: Check removing this is OK. It seems reth already sets up the global tracing
-            // subscriber, so this fails
-            // config.base_config.setup_tracing_subscriber().expect("Failed to set up rbuilder tracing subscriber");
 
             // Spawn redacted server that is safe for tdx builders to expose
             telemetry::servers::redacted::spawn(
@@ -152,7 +170,77 @@ where
             )
             .await?;
             let builder = config
-                .new_builder(provider, l2_providers, Default::default())
+                .new_builder(provider, l2_providers, Some(l1_mempool), Some(mempools), Default::default())
+                .await?;
+
+            builder.run().await?;
+
+            Ok::<(), eyre::Error>(())
+        }
+        .await;
+
+        if let Err(e) = result {
+            error!("Fatal rbuilder error: {}", e);
+            process::exit(1);
+        }
+
+        error!("rbuilder stopped unexpectedly");
+        process::exit(1);
+    });
+    Ok(())
+}
+
+
+use futures::future::IntoStream;
+use futures::stream::TakeUntil;
+use futures::{FutureExt, Stream, StreamExt};
+
+fn spawn_rbuilder_<P, DB>(
+    arg: &GwynethArgs,
+    l1_node_config: &NodeConfig,
+    l1_provider: P,
+    l2_providers: Vec<P>,
+    l1_ethapi: dyn EthApiStream,
+    l2_ethapis: Vec<dyn EthApiStream>,
+) -> eyre::Result<()>
+where
+    DB: Database + Clone + 'static,
+    P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
+{   
+
+
+    let a = l1_ethapi.new_headers_stream();
+    let mut stream = pin!(
+        a.into_stream()
+    );
+
+    println!("Cecilia ==> spawn_rbuilder");
+    let arg = arg.clone();
+    let l1_node_config = l1_node_config.clone();
+    let _handle = task::spawn(async move {
+        let result = async {
+            let mut config: Config = load_config_toml_and_env(
+                arg.rbuilder_config.clone().expect("Gwyneth-rbuilder needs config path")
+            )?;
+            // Where we set L1 rpc, proposer pk and rollup contract address
+            config.l1_config.update_in_process_setting(&l1_node_config);
+            config.base_config.update_in_process_setting(arg, l1_node_config);
+
+            // Spawn redacted server that is safe for tdx builders to expose
+            telemetry::servers::redacted::spawn(
+                config.base_config().redacted_telemetry_server_address(),
+            )
+            .await?;
+
+            // Spawn debug server that exposes detailed operational information
+            telemetry::servers::full::spawn(
+                config.base_config.full_telemetry_server_address(),
+                config.version_for_telemetry(),
+                config.base_config.log_enable_dynamic,
+            )
+            .await?;
+            let builder = config
+                .new_builder(l1_provider, l2_providers, Some(l1_mempool), Some(mempools), Default::default())
                 .await?;
 
             builder.run().await?;
