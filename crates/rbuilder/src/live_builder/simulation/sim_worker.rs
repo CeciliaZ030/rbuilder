@@ -47,8 +47,6 @@ pub fn run_sim_worker<P>(
             sleep(Duration::from_millis(500));
         };
 
-        println!("Brecht: simming 3");
-
         let state_providers = providers
             .iter()
             .map(|(chain_id, provider)| {

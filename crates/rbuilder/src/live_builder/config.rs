@@ -12,7 +12,7 @@ use super::{
         },
         block_sealing_bidder_factory::BlockSealingBidderFactory,
         relay_submit::{RelaySubmitSinkFactory, SubmissionConfig},
-    }, gwyneth::GwynethMempoolReciever,
+    }, gwyneth::{EthApiStream, GwynethMempoolReciever},
 };
 use crate::{
     beacon_api_client::Client,
@@ -46,6 +46,7 @@ use alloy_primitives::{
     utils::{format_ether, parse_ether},
     Address, FixedBytes, B256,
 };
+use alloy_provider::Provider;
 use ethereum_consensus::{
     builder::compute_builder_domain, crypto::SecretKey, primitives::Version,
     state_transition::Context as ContextEth,
@@ -61,6 +62,7 @@ use reth_provider::{
 };
 use serde::Deserialize;
 use serde_with::{serde_as, OneOrMany};
+use tracing_subscriber::fmt::format;
 use std::{fmt::Debug, net::SocketAddr};
 use std::{
     path::{Path, PathBuf},
@@ -168,7 +170,9 @@ impl L1Config {
 
         assert!(relay_proposer.l1_proposer_pk.is_some(), "L1 proposer private key should be set");
         assert!(relay_proposer.l1_rollup_contract.is_some(), "L1 rollup contract should be set");    
-        relay_proposer.l1_rpc_url = Some(SocketAddr::new(l1_node_config.rpc.http_addr, l1_node_config.rpc.http_port).to_string());
+        let url = format!("https://{}", SocketAddr::new(l1_node_config.rpc.http_addr, l1_node_config.rpc.http_port).to_string());
+        relay_proposer.l1_rpc_url = Some(url);
+        println!("Cecilia ==> L1Config::update_in_process_setting {:?}", self.relays.get_mut(0).unwrap().l1_rpc_url);
     }
 
     pub fn resolve_cl_node_urls(&self) -> eyre::Result<Vec<String>> {
@@ -309,20 +313,19 @@ impl LiveBuilderConfig for Config {
     fn base_config(&self) -> &BaseConfig {
         &self.base_config
     }
+
     async fn new_builder<P, DB>(
         &self,
-        
         provider: P,
         l2_providers: Vec<P>,
-        l1_mempool: Option<GwynethMempoolReciever>,
-        mempools: Option<Vec<GwynethMempoolReciever>>,
+        l1_ethapi: Option<Arc<dyn EthApiStream>>,
+        l2_ethapis: Option<Vec<Arc<dyn EthApiStream>>>,
         cancellation_token: tokio_util::sync::CancellationToken,
     ) -> eyre::Result<super::LiveBuilder<P, DB, MevBoostSlotDataGenerator>>
     where
         DB: Database + Clone + 'static,
         P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
     {
-        // println!("Cecilia ==> LiveBuilderConfig::new_builder {:?}", mempools.as_ref().unwrap().len());
         println!("Cecilia ==> LiveBuilderConfig::new_builder");
 
         let (sink_sealed_factory, relays) = self.l1_config.create_relays_sealed_sink_factory(
@@ -352,18 +355,26 @@ impl LiveBuilderConfig for Config {
             self.base_config.blocklist()?,
             cancellation_token.clone(),
         );
-        let live_builder = self
-            .base_config
-            .create_in_process_builder(
-                cancellation_token,
-                sink_factory,
-                payload_event,
-                provider,
-                l2_providers,
-                l1_mempool,
-                mempools
-            )
-            .await?;
+
+        let live_builder = match (l1_ethapi, l2_ethapis) {
+            (Some(l1_ethapi), Some(l2_ethapis)) => {
+                self
+                    .base_config
+                    .create_in_process_builder(
+                        cancellation_token,
+                        sink_factory,
+                        payload_event,
+                        provider,
+                        l2_providers,
+                        l1_ethapi,
+                        l2_ethapis
+                    )
+                    .await?
+            }
+            // Todo(Cecilia): No plan to support IPC path
+            _ => unimplemented!(),
+        };
+        
         let root_hash_config = self.base_config.live_root_hash_config()?;
         let root_hash_task_pool = self.base_config.root_hash_task_pool()?;
         let builders = create_builders(
@@ -393,9 +404,7 @@ impl LiveBuilderConfig for Config {
         match builder_cfg.builder {
             SpecificBuilderConfig::OrderingBuilder(config) => {
                 crate::building::builders::ordering_builder::backtest_simulate_block(config, input)
-            } // SpecificBuilderConfig::ParallelBuilder(config) => {
-              //     parallel_build_backtest(input, config)
-              // }
+            } 
         }
     }
 }

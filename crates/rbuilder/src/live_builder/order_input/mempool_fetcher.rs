@@ -1,12 +1,13 @@
 use super::{OrderInputConfig, ReplaceableOrderPoolCommand};
 use crate::{
-    live_builder::gwyneth::MempoolListener, primitives::{MempoolTx, Order, TransactionSignedEcRecoveredWithBlobs}, telemetry::add_txfetcher_time_to_query
+    live_builder::gwyneth::{EthApiStream}, primitives::{MempoolTx, Metadata, Order, TransactionSignedEcRecoveredWithBlobs}, telemetry::add_txfetcher_time_to_query
 };
 use alloy_primitives::{hex, Bytes, FixedBytes};
 use alloy_provider::{IpcConnect, Provider, ProviderBuilder, RootProvider};
 use alloy_pubsub::PubSubFrontend;
 use futures::{FutureExt, StreamExt};
-use std::{pin::pin, time::Instant};
+use reth::transaction_pool::{EthPoolTransaction, EthPooledTransaction};
+use std::{pin::pin, sync::Arc, time::Instant};
 use tokio::{
     sync::{mpsc, mpsc::error::SendTimeoutError},
     task::JoinHandle,
@@ -20,7 +21,7 @@ use tracing::{error, info, trace};
 /// In the future we may consider updating reth so we can process blob txs in a different task to avoid slowing down non blob txs.
 pub async fn subscribe_to_mempool_with_blobs(
     config: OrderInputConfig,
-    mempool: MempoolListener,
+    ethapi: Arc<dyn EthApiStream>,
     results: mpsc::Sender<ReplaceableOrderPoolCommand>,
     global_cancel: CancellationToken,
 ) -> eyre::Result<JoinHandle<()>> {
@@ -28,15 +29,11 @@ pub async fn subscribe_to_mempool_with_blobs(
     let handle = tokio::spawn(async move {
         info!("Subscribe to txpool with blobs: started");
 
-        let mut stream = pin!(
-            mempool.into_stream().take_until(global_cancel.cancelled())
-        );
-        
-        while let Some(tx) = stream.next().await {
+        while let Some(tx) = ethapi.full_pending_transaction_stream().next().await {
             println!("Cecilia debug: Some txn arrived on {:?}", tx);
 
             let start = Instant::now();
-            let tx = MempoolTx::new(tx);
+            let tx = convert_pooled_transactions(tx.transaction.transaction.clone());
 
             let order = Order::Tx(tx);
             let order_id = order.id();
@@ -76,6 +73,24 @@ pub async fn subscribe_to_mempool_with_blobs(
     });
 
     Ok(handle)
+}
+
+fn convert_pooled_transactions(mut pooled_tx: EthPooledTransaction) -> MempoolTx {
+    let tx = pooled_tx.transaction().clone();
+
+    let tx_with_blobs = if let Some(blob) = pooled_tx.take_blob().maybe_sidecar() {
+        TransactionSignedEcRecoveredWithBlobs {
+            tx,
+            blobs_sidecar: Arc::new(blob.clone()),
+            metadata: Default::default(),
+        }
+    } else {
+        TransactionSignedEcRecoveredWithBlobs::new_no_blobs(tx).unwrap()
+    };
+
+    MempoolTx {
+        tx_with_blobs,
+    }
 }
 
 

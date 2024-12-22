@@ -67,8 +67,6 @@ async fn main() -> eyre::Result<()> {
         cancel.clone(),
     );
 
-    let layer2_info = Layer2Info::new(vec![], &vec![], &vec![]).await?;
-    let gwyneth_nodes = GwynethNodes{ nodes: HashMap::default() };
     let builder = LiveBuilder::<
         ProviderFactoryReopener<Arc<DatabaseEnv>>,
         Arc<DatabaseEnv>,
@@ -100,12 +98,11 @@ async fn main() -> eyre::Result<()> {
         extra_data: Vec::new(),
         blocklist: Default::default(),
         global_cancellation: cancel.clone(),
-        l1_mempool: None,
+        l1_ethapi: None,
         extra_rpc: RpcModule::new(()),
         sink_factory: Box::new(TraceBlockSinkFactory {}),
         builders: vec![Arc::new(DummyBuildingAlgorithm::new(10))],
-        layer2_info,
-        gwyneth_nodes,
+        gwyneth_nodes: GwynethNodes::default(),
     };
 
     let ctrlc = tokio::spawn(async move {

@@ -110,8 +110,7 @@ impl MevBoostSlotDataGenerator {
     ///     it, but even with the event being created for every slot, the fee_recipient we get from MEV-Boost might be different so we should always replace it.
     ///     Note that with MEV-boost the validator may change the fee_recipient when registering to the Relays.
     pub fn spawn(self) -> (JoinHandle<()>, mpsc::UnboundedReceiver<MevBoostSlotData>) {
-        //let relays = RelaysForSlotData::new(&self.relays);
-        println!("==> MevBoostSlotDataGenerator::spawn cl clients \n{:?}", self.cls);
+        println!("==> MevBoostSlotDataGenerator::spawn cl clients \n{:?}", self.cls[0].inner.endpoint);
         let (send, receive) = mpsc::unbounded_channel();
         let handle = tokio::spawn(async move {
             let mut source = PayloadSourceMuxer::new(
@@ -122,20 +121,12 @@ impl MevBoostSlotDataGenerator {
             );
 
             info!("MevBoostSlotDataGenerator: started");
-            //let mut relays = relays;
             let mut recently_sent_data = VecDeque::with_capacity(RECENTLY_SENT_EVENTS_BUFF);
 
             while let Some(event) = source.recv().await {
                 if self.global_cancellation.is_cancelled() {
                     return;
                 }
-
-                /*let (slot_data, relays) =
-                if let Some(res) = relays.slot_data(event.data.proposal_slot).await {
-                    res
-                } else {
-                    continue;
-                };*/
 
                 let slot_data = SlotData {
                     fee_recipient: address!("8943545177806ED17B9F23F0a21ee5948eCaa776"),

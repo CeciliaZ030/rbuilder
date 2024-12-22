@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use clap::Parser;
 use reth_db::Database;
@@ -18,7 +18,7 @@ use crate::{
     utils::build_info::Version,
 };
 
-use super::{base_config::BaseConfig, gwyneth::GwynethMempoolReciever, LiveBuilder};
+use super::{base_config::BaseConfig, gwyneth::{EthApiStream, GwynethMempoolReciever}, LiveBuilder};
 
 #[derive(Parser, Debug)]
 enum Cli {
@@ -49,8 +49,8 @@ pub trait LiveBuilderConfig: Debug + DeserializeOwned + Sync {
         &self,
         provider: P,
         l2_providers: Vec<P>,
-        l1_mempoool: Option<GwynethMempoolReciever>,
-        mempools: Option<Vec<GwynethMempoolReciever>>,
+        l1_ethapi: Option<Arc<dyn EthApiStream>>,
+        l2_ethapis: Option<Vec<Arc<dyn EthApiStream>>>,
         cancellation_token: CancellationToken,
     ) -> impl std::future::Future<Output = eyre::Result<LiveBuilder<P, DB, MevBoostSlotDataGenerator>>>
            + Send
@@ -107,7 +107,7 @@ where
         config.base_config().log_enable_dynamic,
     )
     .await?;
-    let provider = config.base_config().create_provider_factory()?;
+    let provider = config.base_config().create_provider_reopener()?;
     // For out-of-process builders only
     let l2_providers = config.base_config().gwyneth_provider_reopeners()?;
     let builder = config

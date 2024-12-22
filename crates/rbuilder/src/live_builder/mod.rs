@@ -29,7 +29,7 @@ use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, B256, U256};
 use building::BlockBuildingPool;
 use eyre::Context;
-use gwyneth::{GwynethNodes, MempoolListener};
+use gwyneth::{EthApiStream, GwynethNodes};
 use jsonrpsee::RpcModule;
 use payload_events::MevBoostSlotData;
 use reth::{primitives::Header, providers::HeaderProvider};
@@ -84,12 +84,12 @@ where
     pub blocklist: HashSet<Address>,
 
     pub global_cancellation: CancellationToken,
-    pub l1_mempool: Option<MempoolListener>,
+    pub l1_ethapi: Option<Arc<dyn EthApiStream>>,
 
     pub sink_factory: Box<dyn UnfinishedBlockBuildingSinkFactory>,
     pub builders: Vec<Arc<dyn BlockBuildingAlgorithm<P, DB>>>,
     pub extra_rpc: RpcModule<()>,
-    pub layer2_info: Layer2Info<P>,
+
     pub gwyneth_nodes: GwynethNodes<P>,
 }
 
@@ -130,7 +130,7 @@ where
             let (handle, sub) = start_orderpool_jobs(
                 self.order_input_config,
                 self.provider.clone(),
-                self.l1_mempool.clone(),
+                self.l1_ethapi.clone(),
                 self.extra_rpc,
                 self.global_cancellation.clone(),
             )
@@ -144,12 +144,13 @@ where
         providers.insert(self.chain_chain_spec.chain.id(), self.provider.clone());
 
         // Cecilia!: call start_orderpool_jobs L2
+        println!("WTF how many nodes are there? {:?}", self.gwyneth_nodes.nodes.len());
         for (chain_id, node) in self.gwyneth_nodes.nodes.iter() {
             let orderpool_subscriber = {
                 let (handle, sub) = start_orderpool_jobs(
                     node.order_input_config.clone(),
                     node.provider.clone(),
-                    Some(node.mempool_listener.clone()),
+                    Some(node.ethapi.clone()),
                     RpcModule::new(()),
                     self.global_cancellation.clone(),
                 )
@@ -160,6 +161,7 @@ where
             orderpool_subscribers.insert(*chain_id, orderpool_subscriber);
             providers.insert(*chain_id, node.provider.clone());
         }
+
 
         let order_simulation_pool = {
             OrderSimulationPool::new(
@@ -218,6 +220,11 @@ where
                 // @Nicer
                 let parent_block = payload.parent_block_hash();
                 let timestamp = payload.timestamp();
+                let ln = self.provider.last_block_number()?;
+                let bn = self.provider.best_block_number()?;
+                let info = self.provider.chain_info()?;
+                println!("Cecilia debug 💥 {:?}\n{:?} {:?}", info, ln, bn);
+
                 match wait_for_block_header(parent_block, timestamp, &self.provider).await {
                     Ok(header) => header,
                     Err(err) => {
@@ -251,7 +258,7 @@ where
             sleep(Duration::from_millis(4000));
 
             // TODO: Brecht
-            let mut chains = HashMap::default();
+            let mut block_ctx_with_l2s = HashMap::default();
             for (&chain_id, _) in providers.iter() {
                 println!("setting up {}", chain_id);
                 let mut block_ctx = block_ctx.clone();
@@ -259,13 +266,14 @@ where
                 println!("chain spec chain id: {}", chain_spec.chain.id());
                 if chain_spec.chain.id() != chain_id {
                     println!("updating ctx for {}", chain_id);
-                    let latest_block = self
-                        .layer2_info
-                        .get_latest_block(chain_id, BlockId::Number(BlockNumberOrTag::Latest))
+                    let latest_header = self
+                        .gwyneth_nodes
+                        .get_latest_header(chain_id)
                         .await?;
-                    if let Some(latest_block) = latest_block {
-                        block_ctx.attributes.parent = latest_block.header.hash;
-                        block_ctx.block_env.number = U256::from(latest_block.header.number + 1);
+                    if let Some(latest_header) = latest_header {
+                        // TODO: hash_slow?
+                        block_ctx.attributes.parent = latest_header.hash();
+                        block_ctx.block_env.number = U256::from(latest_header.number + 1);
                     } else {
                         println!("failed to get latest block for {}", chain_id);
                     }
@@ -276,12 +284,12 @@ where
                     "Latest block hash for {} is {}",
                     chain_id, block_ctx.attributes.parent
                 );
-                chains.insert(chain_id, block_ctx);
+                block_ctx_with_l2s.insert(chain_id, block_ctx);
             }
 
             let super_block_ctx = BlockBuildingContext::from_attributes(
                 self.chain_chain_spec.chain.id(),
-                chains,
+                block_ctx_with_l2s,
                 Some(self.coinbase_signer.clone()),
             );
 
@@ -308,7 +316,7 @@ where
     }
 }
 
-async fn get_layer2_infos(chain_id: U256) -> Result<(), Box<dyn std::error::Error>> {
+// async fn get_layer2_infos(chain_id: U256) -> Result<(), Box<dyn std::error::Error>> {
     // Let's just pretend this info is already set up somewhere as Layer2Info but for now
     // i'm just constructing it here.
     // let urls = vec![
@@ -324,8 +332,8 @@ async fn get_layer2_infos(chain_id: U256) -> Result<(), Box<dyn std::error::Erro
     //     None => println!("Chain ID not found"),
     // }
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 /// May fail if we wait too much (see [BLOCK_HEADER_DEAD_LINE_DELTA])
 async fn wait_for_block_header<P>(

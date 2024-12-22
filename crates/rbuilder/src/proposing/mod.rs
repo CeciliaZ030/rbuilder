@@ -161,8 +161,6 @@ impl BlockProposer {
             "number of transactions: {}",
             execution_payload.transactions.len()
         );
-        println!("transactions: {:?}", execution_payload.transactions);
-        println!("tx list: {:?}", tx_list);
 
         let meta = BlockMetadata {
             blockHash: execution_payload.block_hash,
@@ -183,7 +181,7 @@ impl BlockProposer {
             txList: tx_list.into(),
         };
 
-        println!("meta: {:?}", meta);
+        // println!("meta: {:?}", meta);
 
         Ok((meta, execution_payload.transactions.len()))
     }

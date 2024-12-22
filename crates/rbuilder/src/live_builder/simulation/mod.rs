@@ -85,7 +85,7 @@ where
             let ctx: Arc<Mutex<CurrentSimulationContexts>> = Arc::clone(&result.current_contexts);
             let providers = result.providers.clone();
             let cancel = global_cancellation.clone();
-            let handle = std::thread::Builder::new()
+            let handle = std::thread::Builder::new() 
                 .name(format!("sim_thread:{}", i))
                 .spawn(move || {
                     sim_worker::run_sim_worker(i, ctx, providers, cancel);
@@ -108,9 +108,6 @@ where
         block_cancellation: CancellationToken,
     ) -> SlotOrderSimResults {
         let (slot_sim_results_sender, slot_sim_results_receiver) = mpsc::channel(10_000);
-
-        // Clone the original providers since we can't convert ProviderFactory<DB> to P
-        let providers = self.providers.clone();
 
         let providers = self.providers.clone();
         let current_contexts = Arc::clone(&self.current_contexts);
