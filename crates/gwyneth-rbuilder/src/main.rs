@@ -1,18 +1,11 @@
-//! `rbuilder` running in-process with vanilla reth.
-//!
-//! Usage: `cargo run -r --bin reth-rbuilder -- node --rbuilder.config <path-to-your-config-toml>`
-//!
-//! Note this method of running rbuilder is not quite ready for production.
-//! See <https://github.com/flashbots/rbuilder/issues/229> for more information.
-
 use gwyneth::{
     cli::{create_gwyneth_nodes, GwynethArgs}, exex::GwynethFullNode,
 };
 use rbuilder::{
-    live_builder::{base_config::load_config_toml_and_env, cli::LiveBuilderConfig, config::Config, gwyneth::{EthApiStream, GwynethMempoolReciever}},
+    live_builder::{base_config::load_config_toml_and_env, cli::LiveBuilderConfig, config::{Config, RethInput}, gwyneth::{EthApiStream, EthTxSender, GwynethMempoolReciever}},
     telemetry,
 };
-use reth::{network::NetworkEventListenerProvider, rpc::{api::NetApiClient, eth::EthApiServer, types::Header}, transaction_pool::TransactionPool};
+use reth::{network::NetworkEventListenerProvider, rpc::{api::{eth::helpers::EthTransactions, NetApiClient}, eth::EthApiServer, types::Header}, transaction_pool::TransactionPool};
 use reth_db_api::Database;
 use reth_node_builder::{EngineNodeLauncher, NodeConfig};
 use reth_provider::{
@@ -40,41 +33,37 @@ fn main() -> eyre::Result<()> {
         let task_executor = builder.task_executor().clone();
         let gwyneth_nodes = create_gwyneth_nodes(&arg, task_executor.clone(), &l1_node_config).await;
 
-        let l2_ethapis = gwyneth_nodes
-            .iter()
-            .map(|g| match g {
-                GwynethFullNode::Provider1(n) => {
-                    let api: Arc<dyn EthApiStream> = n.rpc_registry.eth_handlers().pubsub.inner.clone();
-                    api
-                },
-                GwynethFullNode::Provider2(n) => {
-                    let api: Arc<dyn EthApiStream> = n.rpc_registry.eth_handlers().pubsub.inner.clone();
-                    api
-                },
-            })
-            .collect::<Vec<_>>();
 
         let enable_engine2 = arg.experimental;
         match enable_engine2 {
             true => {
-                let l2_providers = gwyneth_nodes
+                let (l2_providers, l2_ethapis) = gwyneth_nodes
                     .iter()
                     .map(|node| match node {
                         GwynethFullNode::Provider1(_) => {
-                            panic!("Unexpected Provider: expect BlockchainProvider2")
+                            panic!("Unexpected Provider: expect BlockchainProvider1")
                         }
-                        GwynethFullNode::Provider2(n) => n.provider.clone(),
+                        GwynethFullNode::Provider2(n) => {
+                            let ethapi: Arc<dyn EthApiStream> = Arc::new(n.rpc_registry.eth_handlers().pubsub.clone());
+                            (n.provider.clone(), ethapi)
+                        },
                     })
-                    .collect::<Vec<_>>();
-                
+                    .collect::<(Vec<_>, Vec<_>)>();
+
                 let handle = builder
                     .with_types_and_provider::<EthereumNode, BlockchainProvider2<_>>()
                     .with_components(EthereumNode::components())
                     .with_add_ons::<EthereumAddOns>()
-                    .on_rpc_started(move |ctx, _| {
-                        println!("Cecilia ==> on_rpc_started");
-                        let l1_ethapi: Arc<dyn EthApiStream> =ctx.registry.eth_handlers().pubsub.inner.clone();
-                        spawn_rbuilder(&arg, &l1_node_config, ctx.provider().clone(), l2_providers, l1_ethapi, l2_ethapis)
+                    .on_rpc_started(move |ctx, handles| {
+                        println!("[rb] Cecilia ==> on_rpc_started");
+                        let reth_input = RethInput {
+                            l1_provider: ctx.provider().clone(),
+                            l2_providers: l2_providers.clone(),
+                            l1_ethapi: Some(Arc::new(ctx.registry.eth_handlers().pubsub.clone())),
+                            l2_ethapis: Some(l2_ethapis.clone()),
+                            l1_client: handles.rpc.http_client()
+                        };
+                        spawn_rbuilder(&arg, &l1_node_config, reth_input)
                     })
                     .install_exex("Rollup", move |ctx| async {
                         Ok(gwyneth::exex::Rollup::new(ctx, gwyneth_nodes)
@@ -92,15 +81,18 @@ fn main() -> eyre::Result<()> {
                 handle.node_exit_future.await
             }
             false => {
-                let l2_providers = gwyneth_nodes
+                let (l2_providers, l2_ethapis) = gwyneth_nodes
                     .iter()
                     .map(|node| match node {
-                        GwynethFullNode::Provider1(n) => n.provider.clone(),
+                        GwynethFullNode::Provider1(n) => {
+                            let ethapi: Arc<dyn EthApiStream> = Arc::new(n.rpc_registry.eth_handlers().pubsub.clone());
+                            (n.provider.clone(), ethapi)
+                        }
                         GwynethFullNode::Provider2(_) => {
-                            panic!("Unexpected Provider: expect BlockchainProvider")
+                            panic!("Unexpected Provider: expect BlockchainProvider2")
                         }
                     })
-                    .collect::<Vec<_>>();
+                    .collect::<(Vec<_>, Vec<_>)>();
 
                 let handle = builder
                     .with_types_and_provider::<EthereumNode, BlockchainProvider<_>>()
@@ -111,9 +103,15 @@ fn main() -> eyre::Result<()> {
                             .await?
                             .start())
                     })
-                    .on_rpc_started(move |ctx, _| {
-                        let l1_ethapi: Arc<dyn EthApiStream> = ctx.registry.eth_handlers().pubsub.inner.clone();
-                        spawn_rbuilder(&arg, &l1_node_config, ctx.provider().clone(), l2_providers, l1_ethapi, l2_ethapis)
+                    .on_rpc_started(move |ctx, handles| {
+                        let reth_input = RethInput {
+                            l1_provider: ctx.provider().clone(),
+                            l2_providers: l2_providers.clone(),
+                            l1_ethapi: Some(Arc::new(ctx.registry.eth_handlers().pubsub.clone())),
+                            l2_ethapis: Some(l2_ethapis.clone()),
+                            l1_client: handles.rpc.http_client()
+                        };
+                        spawn_rbuilder(&arg, &l1_node_config, reth_input)
                     })
                     .launch()
                     .await?;
@@ -121,7 +119,7 @@ fn main() -> eyre::Result<()> {
             }
         }
     }) {
-        eprintln!("Error: {err:?}");
+        eprintln!("[rb] Error: {err:?}");
         std::process::exit(1);
     }
     Ok(())
@@ -133,10 +131,7 @@ fn main() -> eyre::Result<()> {
 fn spawn_rbuilder<P, DB>(
     arg: &GwynethArgs,
     l1_node_config: &NodeConfig,
-    l1_provider: P,
-    l2_providers: Vec<P>,
-    l1_ethapi: Arc<dyn EthApiStream>,
-    l2_ethapis: Vec<Arc<dyn EthApiStream>>,
+    reth_input: RethInput<P>
 ) -> eyre::Result<()>
 where
     DB: Database + Clone + 'static,
@@ -153,9 +148,8 @@ where
             config.l1_config.update_in_process_setting(&l1_node_config);
             config.base_config.update_in_process_setting(arg);
 
-            println!("Cecilia ==> spawn_rbuilder {:?}", config);
+            println!("[rb] Cecilia ==> spawn_rbuilder {:?}", config);
 
-            
             // Spawn redacted server that is safe for tdx builders to expose
             telemetry::servers::redacted::spawn(
                 config.base_config().redacted_telemetry_server_address(),
@@ -170,7 +164,7 @@ where
             )
             .await?;
             let builder = config
-                .new_builder(l1_provider, l2_providers, Some(l1_ethapi), Some(l2_ethapis), Default::default())
+                .new_builder(reth_input, Default::default())
                 .await?;
 
             builder.run().await?;

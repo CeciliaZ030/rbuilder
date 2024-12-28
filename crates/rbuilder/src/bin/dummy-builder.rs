@@ -58,7 +58,7 @@ async fn main() -> eyre::Result<()> {
         with_url("https://0xac6e77dfe25ecd6110b8e780608cce0dab71fdd5ebea22a16c0205200f2f8e2e3ad3b71d3499c54ad14d6c21b41a37ae@boost-relay.flashbots.net").
         with_name("flashbots");
 
-    let relay = MevBoostRelay::from_config(&relay_config)?;
+    let relay = MevBoostRelay::from_config(&relay_config, None)?;
 
     let payload_event = MevBoostSlotDataGenerator::new(
         vec![Client::default()],
@@ -86,6 +86,7 @@ async fn main() -> eyre::Result<()> {
             DEFAULT_SERVE_MAX_CONNECTIONS,
             DEFAULT_RESULTS_CHANNEL_TIMEOUT,
             DEFAULT_INPUT_CHANNEL_BUFFER_SIZE,
+            false,
         ),
         chain_chain_spec: chain_spec.clone(),
         provider: create_provider_factory(
@@ -136,7 +137,7 @@ struct TracingBlockSink {}
 
 impl UnfinishedBlockBuildingSink for TracingBlockSink {
     fn new_block(&self, block: Box<dyn BlockBuildingHelper>) {
-        println!("UnfinishedBlockBuildingSink::new_block");
+        println!("[rb] UnfinishedBlockBuildingSink::new_block");
         info!(
             order_count =? block.built_block_trace().included_orders.len(),
             "Block generated. Throwing it away!"

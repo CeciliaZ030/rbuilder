@@ -1,4 +1,4 @@
-use alloy_network::{EthereumWallet, TransactionBuilder};
+use alloy_network::{Ethereum, EthereumWallet, NetworkWallet, TransactionBuilder};
 use alloy_provider::{Provider, ProviderBuilder};
 use alloy_rlp::{Decodable, Encodable};
 use alloy_signer_local::PrivateKeySigner;
@@ -6,7 +6,9 @@ use alloy_signer_local::PrivateKeySigner;
 use eyre::Result;
 //use revm_primitives::{Address, B256, U256};
 use alloy_primitives::{Address, B256, U256};
-use reth_primitives::TransactionSigned;
+use jsonrpsee::{core::traits::ToRpcParams, http_client::HttpClient, types::Request};
+use reth::rpc::server_types::eth::receipt;
+use reth_primitives::{TransactionSigned, U64};
 //use revm_primitives::address;
 use url::Url;
 //use crate::mev_boost::{SubmitBlockRequest};
@@ -14,12 +16,19 @@ use url::Url;
 use alloy_network::eip2718::Encodable2718;
 use alloy_rpc_types_engine::ExecutionPayload;
 use alloy_sol_types::{sol, SolCall, SolType};
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 
-use alloy_rpc_types::{TransactionInput, TransactionRequest};
-
-use crate::mev_boost::SubmitBlockRequest;
-
+use alloy_rpc_types::{TransactionInput, TransactionReceipt, TransactionRequest};
+use serde_json::value::RawValue;
+use crate::{live_builder::gwyneth::{EthApiStream, EthTxSender}, mev_boost::{RelayError, SubmitBlockRequest}};
+use jsonrpsee::{
+    core::{
+        client::{ClientT, SubscriptionClientT},
+        params::ArrayParams,
+    },
+    rpc_params,
+    types::error::ErrorCode,
+};
 // Using sol macro to use solidity code here.
 sol! {
     #[derive(Debug)]
@@ -52,84 +61,125 @@ sol! {
 
 #[derive(Debug, Clone)]
 pub struct BlockProposer {
-    rpc_url: String,
+    l1_client: Option<HttpClient>,
+    l1_rpc: Option<String>,
     contract_address: String,
     private_key: String,
 }
 
 impl BlockProposer {
-    pub fn new(rpc_url: String, contract_address: String, private_key: String) -> Result<Self> {
+    pub fn new(l1_client: Option<HttpClient>, l1_rpc: Option<String>, contract_address: String, private_key: String) -> Result<Self> {
         Ok(BlockProposer {
-            rpc_url,
+            l1_client,
+            l1_rpc,
             contract_address,
             private_key,
         })
     }
 
-    pub async fn propose_block(&self, request: &SubmitBlockRequest) -> Result<()> {
-        println!("propose_block");
+    pub async fn propose_block(&self, request: &SubmitBlockRequest) -> Result<(), RelayError> {
+        println!("[rb] propose_block");
 
         let execution_payload = request.execution_payload();
-
-        // Create the transaction data
-        let (meta, num_txs) = self.create_propose_block_tx_data(&execution_payload)?;
+        let (meta, num_txs) = self.create_propose_block_tx_data(&execution_payload)
+            .expect("Failed to create BlockMetadata in propose block");
 
         let propose_data = Rollup::proposeBlockCall {
             data: vec![meta.clone()],
-        };
-        let propose_data = propose_data.abi_encode();
+        }.abi_encode();
 
         let decoded_transactions: Vec<TransactionSigned> = decode_transactions(&meta.txList);
-        println!("decoded_transactions: {:?}", decoded_transactions);
+        println!("[rb] decoded_transactions: {:?}", decoded_transactions);
 
-        let provider = ProviderBuilder::new().on_http(Url::parse(&self.rpc_url.clone()).unwrap());
 
         // Create a signer from a random private key.
         let signer = PrivateKeySigner::from_str(&self.private_key).unwrap();
         let wallet = EthereumWallet::from(signer.clone());
 
-        // Sign the transaction
-        let chain_id = provider.get_chain_id().await?;
-        let nonce = provider
-            .get_transaction_count(signer.address())
-            .await
-            .unwrap();
-
         // Build a transaction to send 100 wei from Alice to Bob.
         // The `from` field is automatically filled to the first signer's address (Alice).
-        let tx = TransactionRequest::default()
+        let mut tx = TransactionRequest::default()
             .with_to(Address::from_str(&self.contract_address).unwrap())
             .input(TransactionInput {
                 input: Some(propose_data.into()),
                 data: None,
             })
-            .with_nonce(nonce)
-            .with_chain_id(chain_id)
             .with_value(U256::from(0))
             .with_gas_limit(5_000_000)
-            .with_max_priority_fee_per_gas(1_000_000_000)
-            .with_max_fee_per_gas(20_000_000_000);
+            .with_max_priority_fee_per_gas(1_000_000)
+            .with_max_fee_per_gas(10_000_000);
 
-        // Build the transaction with the provided wallet. Flashbots Protect requires the transaction to
-        // be signed locally and send using `eth_sendRawTransaction`.
-        let tx_envelope = tx.build(&wallet).await?;
+        let receipt = match (&self.l1_client, &self.l1_rpc) {
+            (_, Some(url)) => {
+                println!("[rb] BlockProposer using L1 RPC URL: {}", url);
+                let provider = ProviderBuilder::new().on_http(Url::parse(&url).unwrap());
+                let nonce = provider.get_transaction_count(signer.address()).await
+                    .map_err(|e| RelayError::ProposalError(e.to_string()))?;
+                let chain_id = provider.get_chain_id().await
+                    .map_err(|e| RelayError::ProposalError(e.to_string()))?;
+                tx.nonce = Some(nonce);
+                tx.chain_id = Some(chain_id);
+                println!("[rb] BlockProposer tx_envelope done - nonce {:?} on {:?}", nonce, chain_id);
 
-        // Encode the transaction using EIP-2718 encoding.
-        let tx_encoded = tx_envelope.encoded_2718();
+                let tx_encoded = <TransactionRequest as TransactionBuilder<Ethereum>>::build(tx, &wallet)
+                    .await
+                    .map_err(|e| RelayError::ProposalError(e.to_string()))?
+                    .encoded_2718();
 
-        // Send the transaction and wait for the broadcast.
-        let pending_tx = provider.send_raw_transaction(&tx_encoded).await?;
+                let pending_tx = provider
+                    .send_raw_transaction(&tx_encoded)
+                    .await
+                    .map_err(|e| RelayError::ProposalError(e.to_string()))?;
+                println!("[rb] Pending transaction... {}", pending_tx.tx_hash());
+                pending_tx.get_receipt().await.map_err(|e| RelayError::ProposalError(e.to_string()))?
+            },
+            (Some(client), _) => {
+                println!("[rb] BlockProposer using L1 client {:?}", client);
+                let nonce = client.request::<U256, _>(
+                        "eth_getTransactionCount", 
+                        rpc_params![signer.address().to_string()]
+                    ).await
+                    .map_err(|e| RelayError::ProposalError(e.to_string()))?;
+                let chain_id = client.request::<Option<U64>, _>("eth_chainId", rpc_params![])
+                    .await
+                    .map_err(|e| RelayError::ProposalError(e.to_string()))?;
+                println!("[rb] BlockProposer tx_envelope done - nonce {:?} on {:?}", nonce, chain_id);
+                
+                tx.nonce = Some(nonce.try_into().unwrap());
+                tx.chain_id = chain_id.map(|c| c.try_into().unwrap());
+                // Build the transaction with the provided wallet. Flashbots Protect requires the transaction to
+                // be signed locally and send using `eth_sendRawTransaction`.
+                let tx_encoded = <TransactionRequest as TransactionBuilder<Ethereum>>::build(tx, &wallet)
+                    .await
+                    .map_err(|e| RelayError::ProposalError(e.to_string()))?
+                    .encoded_2718();
 
-        println!("Pending transaction... {}", pending_tx.tx_hash());
-
-        // Wait for the transaction to be included and get the receipt.
-        let receipt = pending_tx.get_receipt().await?;
-
+                let params = format!("0x{}", reth_primitives::hex::encode(tx_encoded));
+                let tx_hash = client.request::<B256, _>("eth_sendRawTransaction", rpc_params!(params))
+                    .await
+                    .map_err(|e| RelayError::ProposalError(e.to_string()))?
+                    .to_string();
+                println!("[rb] BlockProposer eth_sendRawTransaction");
+                let mut receipt = None;
+                loop {
+                    receipt = client.request::<Option<TransactionReceipt>, _>("eth_getTransactionReceipt", rpc_params!(tx_hash.clone()))
+                        .await
+                        .map_err(|e| RelayError::ProposalError(e.to_string()))?;
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    if receipt.is_some() {
+                        break;
+                    }
+                }
+                receipt.unwrap()
+            },
+            _ => {
+                return Err(RelayError::ProposalError("No L1 client or L1 RPC URL provided".to_string()));
+            }
+        };
         println!(
             "Transaction included in block {}",
             receipt.block_number.expect("Failed to get block number")
         );
-
         Ok(())
     }
 
@@ -142,7 +192,7 @@ impl BlockProposer {
             ExecutionPayload::V2(payload) => &payload.payload_inner,
             ExecutionPayload::V3(payload) => &payload.payload_inner.payload_inner,
             _ => {
-                println!("Unsupported ExecutionPayload version");
+                println!("[rb] Unsupported ExecutionPayload version");
                 return Err(eyre::eyre!("Unsupported ExecutionPayload version"));
             }
         };
@@ -156,7 +206,7 @@ impl BlockProposer {
         transactions.encode(&mut tx_list);
         let tx_list_hash = B256::from(alloy_primitives::keccak256(&tx_list));
 
-        println!("proposing for block: {}", execution_payload.block_number);
+        println!("[rb] proposing for block: {}", execution_payload.block_number);
         println!(
             "number of transactions: {}",
             execution_payload.transactions.len()
@@ -181,7 +231,7 @@ impl BlockProposer {
             txList: tx_list.into(),
         };
 
-        // println!("meta: {:?}", meta);
+        // println!("[rb] meta: {:?}", meta);
 
         Ok((meta, execution_payload.transactions.len()))
     }
@@ -198,7 +248,13 @@ fn decode_transactions(tx_list: &[u8]) -> Vec<TransactionSigned> {
     #[allow(clippy::useless_asref)]
     Vec::<TransactionSigned>::decode(&mut tx_list.as_ref()).unwrap_or_else(|e| {
         // If decoding fails we need to make an empty block
-        println!("decode_transactions not successful: {e:?}, use empty tx_list");
+        println!("[rb] decode_transactions not successful: {e:?}, use empty tx_list");
         vec![]
     })
+}
+
+#[test]
+fn test_decode_transactions() {
+    let b = B256::default();
+    println!("[rb] b: {:?}", b);
 }

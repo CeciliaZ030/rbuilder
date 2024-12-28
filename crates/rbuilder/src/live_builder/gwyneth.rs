@@ -3,20 +3,22 @@ use alloy_eips::{BlockHashOrNumber, BlockId};
 use alloy_primitives::U256;
 use alloy_provider::{IpcConnect, Provider, ProviderBuilder, RootProvider};
 use alloy_pubsub::PubSubFrontend;
-use alloy_rpc_types::{Block, BlockTransactionsKind, Header as RpcHeader};
+use alloy_rpc_types::{Block, BlockTransactionsKind, Header as RpcHeader, TransactionRequest};
+use alloy_signer_local::PrivateKeySigner;
 use eyre::Result;
 use futures::future::IntoStream;
 use futures::stream::TakeUntil;
 use futures::{FutureExt, Stream, StreamExt};
 use reth::network::NetworkInfo;
-use reth::rpc::eth::pubsub::EthPubSubInner;
+use reth::rpc::eth::EthPubSub;
 use reth::transaction_pool::{EthPoolTransaction, EthPooledTransaction, NewTransactionEvent, TransactionPool};
 use reth_db::{Database, DatabaseEnv};
 use reth_evm::provider;
 use reth_node_core::args::utils::chain_value_parser;
-use reth_primitives::{Header, SealedHeader, TransactionSignedEcRecovered};
-use reth_provider::{BlockReader, CanonStateSubscriptions, DatabaseProviderFactory, EvmEnvProvider, HeaderProvider, StateProvider, StateProviderFactory};
-use revm_primitives::B256;
+use reth_node_core::rpc::eth::helpers::{EthApiSpec, EthTransactions, FullEthApi, LoadFee};
+use reth_primitives::{Header, Receipt, SealedHeader, TransactionMeta, TransactionSignedEcRecovered, TxHash};
+use reth_provider::{BlockReader, CanonStateSubscriptions, DatabaseProviderFactory, EvmEnvProvider, HeaderProvider, ReceiptProvider, StateProvider, StateProviderFactory};
+use revm_primitives::{Address, B256};
 use tokio::sync::mpsc::Receiver;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
 use std::fmt::Debug;
@@ -67,7 +69,7 @@ where
         ethapis: Vec<Arc<dyn EthApiStream>>,
         server_ports: Vec<u16>,
     ) -> Result<Self> {
-        println!("Cecilia ==> GwynethNodes::new {:?} {:?} {:?}", providers.len(), ethapis.len(), server_ports);
+        println!("[rb] Cecilia ==> GwynethNodes::new {:?} {:?} {:?}", providers.len(), ethapis.len(), server_ports);
         let mut nodes = HashMap::default();
         for (((provider, ethapi), port), chain_id) in providers
             .into_iter()
@@ -89,19 +91,20 @@ where
                         4096,
                         Duration::from_millis(50),
                         10_000,
+                        false,
                     ),
                 },
             );
-            println!("inside the fuckin loop {:?}", port)
+            println!("[rb] inside the fuckin loop {:?}", port)
         }
-        println!("WTF how many {:?}", nodes.len());
+        println!("[rb] WTF how many {:?}", nodes.len());
         Ok(Self {
             nodes,
         })
     }
 
     pub async fn get_latest_header(&self, chain_id: u64) -> Result<Option<SealedHeader>> {
-        println!("Cecilia ==> GwynethNodes::get_latest_header {:?}", chain_id);
+        println!("[rb] Cecilia ==> GwynethNodes::get_latest_header {:?}", chain_id);
         if let Some(provider) = self.nodes.get(&chain_id).map(|n| n.provider.clone()) {
             let number = provider.last_block_number()?;
             provider
@@ -112,56 +115,19 @@ where
             eyre::bail!("No provider found for chain_id: {}", chain_id)
         }
     }
-}
 
-// #[derive(Debug, Clone)]
-// pub struct MempoolListener {
-//     inner: Arc<Mutex<GwynethMempoolReciever>>
-// }
-
-// impl MempoolListener {
-//     pub fn new(mempool: GwynethMempoolReciever) -> Self {
-//         Self {
-//             inner: Arc::new(Mutex::new(mempool))
-//         }
-//     }
-// }
-
-// impl Future for MempoolListener {
-//     type Output = TransactionSignedEcRecoveredWithBlobs;
-
-//     fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
-//         println!("Cecilia ==> MempoolListener::poll");
-//         let mut this = self
-//             .get_mut()
-//             .inner
-//             .try_lock()
-//             .expect("Mempool listener mutex poisoned");
-//         match this.poll_recv(cx) {
-//             std::task::Poll::Ready(Some(event)) => {
-//                 println!("New transaction: {:?}", event);
-
-//                 let mut pooled_tx = event.transaction.transaction.clone();
-//                 let tx = pooled_tx.transaction().clone();
+    pub async fn get_synced_header(&self, chain_id: u64) -> Result<SealedHeader> {
+        if let Some(ethapi) = self.nodes.get(&chain_id).map(|n| n.ethapi.clone()) {
+            let number = ethapi.get_synced_header()?;
+            provider
+                .sealed_header(number)
+                .map_err(|e| eyre::eyre!("Error getting latest header for chain_id {}: {:?}", chain_id, e))
                 
-//                 let tx_with_blobs = if let Some(blob) = pooled_tx.take_blob().maybe_sidecar() {
-//                     TransactionSignedEcRecoveredWithBlobs {
-//                         tx,
-//                         blobs_sidecar: Arc::new(blob.clone()),
-//                         metadata: Default::default(),
-//                     }
-//                 } else {
-//                     TransactionSignedEcRecoveredWithBlobs::new_no_blobs(tx).unwrap()
-//                 };
-//                 std::task::Poll::Ready(tx_with_blobs)
-//             },
-//             std::task::Poll::Ready(None) => {
-//                 panic!("Mempool listener closed")
-//             },
-//             std::task::Poll::Pending => std::task::Poll::Pending,
-//         }
-//     }
-// }
+        } else {
+            eyre::bail!("No provider found for chain_id: {}", chain_id)
+        }    
+    }
+}
 
 pub trait EthApiStream: Send + Sync + Debug {  
     fn new_headers_stream(&self) -> Pin<Box<dyn Stream<Item = RpcHeader> + Send>>;
@@ -171,21 +137,63 @@ pub trait EthApiStream: Send + Sync + Debug {
     ) -> Pin<Box<dyn Stream<Item = NewTransactionEvent<EthPooledTransaction>> + Send>>;
 }
 
-impl<Provider, Pool, Events, Network> EthApiStream  
-    for EthPubSubInner<Provider, Pool, Events, Network>  
-where  
-    Provider: BlockReader + EvmEnvProvider + Clone + 'static,  
-    Events: CanonStateSubscriptions + Clone + 'static,  
-    Network: NetworkInfo + Clone + 'static,  
-    Pool: TransactionPool<Transaction = EthPooledTransaction> + Clone + 'static,  
-{  
-    fn new_headers_stream(&self) -> Pin<Box<dyn Stream<Item = RpcHeader> + Send>> {  
-        Box::pin(self.new_headers_stream().map(|header| header ))  
-    }  
+pub trait EthTxSender: Send + Sync + Debug {  
+    fn send_raw_transaction(&self, tx: alloy_primitives::Bytes) ->  Result<B256>;
+    fn receipt_by_hash(&self, hash: TxHash) -> Result<(TransactionMeta, Receipt)>;
+    fn get_nounce(&self, addr: Address) -> Result<u64>;
+}
 
-    fn full_pending_transaction_stream(  
-        &self,  
-    ) -> Pin<Box<dyn Stream<Item = NewTransactionEvent<EthPooledTransaction>> + Send>> {  
-        Box::pin(self.full_pending_transaction_stream())  
-    }  
-}  
+impl<T> EthTxSender for T 
+where 
+    T: FullEthApi + Send + Sync + Debug,
+{
+
+    fn send_raw_transaction(&self, tx: alloy_primitives::Bytes) ->  Result<B256>{
+        println!("[rb] Cecilia ==> EthTxSender::send_raw_transaction {:?}", tx);
+        futures::executor::block_on(self.send_raw_transaction(tx))
+            .map_err(|e| eyre::eyre!("Error sending transaction: {:?}", e))
+    }
+    
+
+    fn receipt_by_hash(&self, hash: TxHash) -> Result<(TransactionMeta, Receipt)> {
+        println!("[rb] Cecilia ==> EthTxSender::receipt_by_hash {:?}", hash);
+        loop {
+            match futures::executor::block_on(self.load_transaction_and_receipt(hash)) {
+                Ok(Some((tx, meta, receipt))) => return Ok((meta, receipt)),
+                Ok(None) => {
+                    continue;
+                },
+                Err(e) => return Err(eyre::eyre!("Error getting receipt by hash: {:?}", e)),
+            }
+        }
+    }
+
+    fn get_nounce(&self, addr: Address) -> Result<u64> {
+        loop {
+            match self.latest_state().unwrap().account_nonce(addr) {
+                Ok(Some(nonce)) => return Ok(nonce),
+                Ok(None) => {
+                    continue;
+                },
+                Err(e) => return Err(eyre::eyre!("Error getting nonce: {:?}", e)),
+            }
+        }
+    }
+}
+
+impl<Provider, Pool, Events, Network> EthApiStream for EthPubSub<Provider, Pool, Events, Network>
+where
+    Provider: BlockReader + EvmEnvProvider + Clone + 'static,
+    Network: NetworkInfo + Clone + 'static,  
+    Events: CanonStateSubscriptions + Clone + 'static,
+    Pool: TransactionPool<Transaction = EthPooledTransaction> + Clone + 'static,  
+{
+
+    fn new_headers_stream(&self) -> Pin<Box<dyn Stream<Item = RpcHeader> + Send>> {
+        Box::pin(self.new_headers_stream().map(|header| header )) 
+    }
+
+    fn full_pending_transaction_stream(&self) -> Pin<Box<dyn Stream<Item = NewTransactionEvent<EthPooledTransaction>> + Send>> {
+        Box::pin(self.full_pending_transaction_stream()) 
+    }
+}

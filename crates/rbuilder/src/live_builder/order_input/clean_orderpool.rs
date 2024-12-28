@@ -70,7 +70,7 @@ where
         
         if let Some(ethapi) = ethapi {
             while let Some(header) = ethapi.new_headers_stream().next().await {
-                println!("Cecilia debug: New block get from ethapi {:?}", header.number);
+                println!("[rb] Cecilia debug: New block get from ethapi {:?}", header.number);
                 if process(header.number) { continue; } else { break; }
             }
         } else {
@@ -90,7 +90,7 @@ where
             let mut new_block_stream = pin!(new_block_stream);
 
             while let Some(block) = new_block_stream.next().await {
-                println!("Cecilia debug: New block get from provider {:?}", block.header.number);
+                println!("[rb] Cecilia debug: New block get from provider {:?}", block.header.number);
                 if process(block.header.number) { continue; } else { break; }
             }
         }

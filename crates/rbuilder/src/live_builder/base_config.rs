@@ -33,7 +33,7 @@ use std::{
 };
 use tracing::warn;
 
-use super::{gwyneth::{EthApiStream, GwynethMempoolReciever, GwynethNodes}, SlotSource};
+use super::{config::RethInput, gwyneth::{EthApiStream, GwynethMempoolReciever, GwynethNodes}, SlotSource};
 
 /// Prefix for env variables in config
 const ENV_PREFIX: &str = "env:";
@@ -162,6 +162,7 @@ impl BaseConfig {
         self.el_node_ipc_path = None;
         self.l2_reth_datadirs = None;
         self.l2_ipc_paths = None;
+        // Only ports to recieve bundles from L2 are necessary
         self.l2_server_ports = match (self.l2_server_ports.clone(), gwyneth_args.ports) {
             (None, None) => panic!("Ports should be provided with config or in-process GwynethArgs"),
             (None, Some(ports)) => Some(ports),
@@ -273,21 +274,19 @@ impl BaseConfig {
         cancellation_token: tokio_util::sync::CancellationToken,
         sink_factory: Box<dyn UnfinishedBlockBuildingSinkFactory>,
         slot_source: SlotSourceType,
-        provider: P,
-        l2_providers: Vec<P>,
-        l1_ethapi: Arc<dyn EthApiStream>,
-        l2_ethapis: Vec<Arc<dyn EthApiStream>>,
+        reth_input: RethInput<P>,
     ) -> eyre::Result<super::LiveBuilder<P, DB, SlotSourceType>>
     where
         DB: Database + Clone + 'static,
         P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
         SlotSourceType: SlotSource,
     {
-        println!("Cecilia ==> BaseConfig::create_in_process_builder");
+        println!("[rb] Cecilia ==> BaseConfig::create_in_process_builder");
+        let RethInput { l1_provider, l2_providers, l1_ethapi, l2_ethapis, l1_client } = reth_input;
         let gwyneth_nodes = GwynethNodes::new(
             self.gwyneth_chain_ids.clone().unwrap(),
             l2_providers, 
-            l2_ethapis, 
+            l2_ethapis.expect("L2 ethapis not provided to init GwynethNodes"),
             self.l2_server_ports.clone().expect("Server ports not provided to init GwynethNodes")
         )?;
         Ok(LiveBuilder::<P, DB, SlotSourceType> {
@@ -297,14 +296,14 @@ impl BaseConfig {
             order_input_config: OrderInputConfig::from_config(self)?,
             blocks_source: slot_source,
             chain_chain_spec: self.chain_spec()?,
-            provider,
+            provider: l1_provider,
 
             coinbase_signer: self.coinbase_signer()?,
             extra_data: self.extra_data()?,
             blocklist: self.blocklist()?,
 
             global_cancellation: cancellation_token,
-            l1_ethapi: Some(l1_ethapi),
+            l1_ethapi,
 
             extra_rpc: RpcModule::new(()),
             sink_factory,

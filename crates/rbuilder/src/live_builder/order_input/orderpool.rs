@@ -101,7 +101,7 @@ impl OrderPool {
             commands.len()
         );
         commands.into_iter().for_each(|oc| self.process_command(oc));
-        println!("Dani debug: OrderPool finished processing commands");
+        println!("[rb] Dani debug: OrderPool finished processing commands");
     }
 
     fn process_order(&mut self, order: &Order) {
@@ -118,7 +118,7 @@ impl OrderPool {
 
         let (order, target_block) = match &order {
             Order::Tx(..) => {
-                println!("Added to mempool: {:?}", order);
+                println!("[rb] Added to mempool: {:?}", order);
                 self.mempool_txs.push((order.clone(), Instant::now()));
                 (order, None)
             }
@@ -160,46 +160,46 @@ impl OrderPool {
     fn process_command(&mut self, command: ReplaceableOrderPoolCommand) {
         match &command {
             ReplaceableOrderPoolCommand::Order(order) => {
-                println!("Dani debug: Processing order: {:?}", order.id());
+                println!("[rb] Dani debug: Processing order: {:?}", order.id());
                 self.process_order(order)
             }
             ReplaceableOrderPoolCommand::CancelShareBundle(c) => {
-                println!("Dani debug: Processing cancel share bundle: {:?}", c.key);
+                println!("[rb] Dani debug: Processing cancel share bundle: {:?}", c.key);
                 self.process_remove_sbundle(c)
             }
             ReplaceableOrderPoolCommand::CancelBundle(key) => {
-                println!("Dani debug: Processing cancel bundle: {:?}", key);
+                println!("[rb] Dani debug: Processing cancel bundle: {:?}", key);
                 self.process_remove_bundle(key)
             }
         }
 
         let target_block = command.target_block();
-        println!("Dani debug: Command target block: {:?}", target_block);
+        println!("[rb] Dani debug: Command target block: {:?}", target_block);
 
         let initial_sink_count = self.sinks.len();
         self.sinks.retain(|_, sub| {
             if !sub.sink.is_alive() {
-                println!("Dani debug: Removing dead sink");
+                println!("[rb] Dani debug: Removing dead sink");
                 return false;
             }
             if target_block.is_none() || target_block == Some(sub.block_number) {
                 let send_ok = match command.clone() {
                     ReplaceableOrderPoolCommand::Order(o) => {
-                        println!("Dani debug: Inserting order into sink");
+                        println!("[rb] Dani debug: Inserting order into sink");
                         sub.sink.insert_order(o)
                     }
                     ReplaceableOrderPoolCommand::CancelShareBundle(cancel) => {
-                        println!("Dani debug: Removing share bundle from sink");
+                        println!("[rb] Dani debug: Removing share bundle from sink");
                         sub.sink
                             .remove_bundle(OrderReplacementKey::ShareBundle(cancel.key))
                     }
                     ReplaceableOrderPoolCommand::CancelBundle(key) => {
-                        println!("Dani debug: Removing bundle from sink");
+                        println!("[rb] Dani debug: Removing bundle from sink");
                         sub.sink.remove_bundle(OrderReplacementKey::Bundle(key))
                     }
                 };
                 if !send_ok {
-                    println!("Dani debug: Failed to send to sink, removing sink");
+                    println!("[rb] Dani debug: Failed to send to sink, removing sink");
                     return false;
                 }
             }

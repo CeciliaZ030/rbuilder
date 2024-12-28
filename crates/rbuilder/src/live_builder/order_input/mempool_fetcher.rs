@@ -25,12 +25,15 @@ pub async fn subscribe_to_mempool_with_blobs(
     results: mpsc::Sender<ReplaceableOrderPoolCommand>,
     global_cancel: CancellationToken,
 ) -> eyre::Result<JoinHandle<()>> {
-    println!("Cecilia ==>  mempool_fetcher::subscribe_to_mempool_with_blobs");
+    println!("[rb] Cecilia ==>  mempool_fetcher::subscribe_to_mempool_with_blobs");
     let handle = tokio::spawn(async move {
         info!("Subscribe to txpool with blobs: started");
 
         while let Some(tx) = ethapi.full_pending_transaction_stream().next().await {
-            println!("Cecilia debug: Some txn arrived on {:?}", tx);
+            if config.skip {
+                continue;
+            }
+            println!("[rb] Cecilia debug: Some txn arrived on {:?}", tx);
 
             let start = Instant::now();
             let tx = convert_pooled_transactions(tx.transaction.transaction.clone());

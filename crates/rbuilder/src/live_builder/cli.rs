@@ -18,7 +18,7 @@ use crate::{
     utils::build_info::Version,
 };
 
-use super::{base_config::BaseConfig, gwyneth::{EthApiStream, GwynethMempoolReciever}, LiveBuilder};
+use super::{base_config::BaseConfig, config::RethInput, gwyneth::{EthApiStream, GwynethMempoolReciever}, LiveBuilder};
 
 #[derive(Parser, Debug)]
 enum Cli {
@@ -47,10 +47,7 @@ pub trait LiveBuilderConfig: Debug + DeserializeOwned + Sync {
     /// Desugared from async to future to keep clippy happy
     fn new_builder<P, DB>(
         &self,
-        provider: P,
-        l2_providers: Vec<P>,
-        l1_ethapi: Option<Arc<dyn EthApiStream>>,
-        l2_ethapis: Option<Vec<Arc<dyn EthApiStream>>>,
+        reth_input: RethInput<P>,
         cancellation_token: CancellationToken,
     ) -> impl std::future::Future<Output = eyre::Result<LiveBuilder<P, DB, MevBoostSlotDataGenerator>>>
            + Send
@@ -81,7 +78,7 @@ where
         Cli::Run(cli) => cli,
         Cli::Config(cli) => {
             let config: ConfigType = load_config_toml_and_env(cli.config)?;
-            println!("{:#?}", config);
+            println!("[rb] {:#?}", config);
             return Ok(());
         }
         Cli::Version => {
@@ -92,7 +89,7 @@ where
 
     let config: ConfigType = load_config_toml_and_env(cli.config)?;
     config.base_config().setup_tracing_subscriber()?;
-    println!("config from toml: {:?}", config);
+    println!("[rb] config from toml: {:?}", config);
 
     let cancel = CancellationToken::new();
 
@@ -107,11 +104,16 @@ where
         config.base_config().log_enable_dynamic,
     )
     .await?;
-    let provider = config.base_config().create_provider_reopener()?;
-    // For out-of-process builders only
-    let l2_providers = config.base_config().gwyneth_provider_reopeners()?;
+
+    let reth_intput = RethInput {
+        l1_provider: config.base_config().create_provider_reopener()?,
+        l2_providers: config.base_config().gwyneth_provider_reopeners()?,
+        l1_ethapi: None,
+        l2_ethapis: None,
+        l1_client: None,
+    };
     let builder = config
-        .new_builder(provider, l2_providers, None, None, cancel.clone())
+        .new_builder(reth_intput, cancel.clone())
         .await?;
 
     let ctrlc = tokio::spawn(async move {

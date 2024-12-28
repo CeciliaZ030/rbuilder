@@ -116,7 +116,7 @@ pub fn sign_block_for_relay(
     pubkey: H384,
     value: U256,
 ) -> eyre::Result<SubmitBlockRequest> {
-    //println!("sign_block_for_relay");
+    //println!("[rb] sign_block_for_relay");
     let message = BidTrace {
         slot: attrs.proposal_slot,
         parent_hash: attrs.parent_block_hash,

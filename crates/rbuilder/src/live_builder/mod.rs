@@ -28,6 +28,7 @@ use alloy_chains::Chain;
 use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{Address, B256, U256};
 use building::BlockBuildingPool;
+use ethers::core::k256::pkcs8::der::EncodeValue;
 use eyre::Context;
 use gwyneth::{EthApiStream, GwynethNodes};
 use jsonrpsee::RpcModule;
@@ -107,8 +108,8 @@ where
         Self { builders, ..self }
     }
 
-    pub async fn run(self) -> eyre::Result<()> {
-        println!("Cecilia ==> LiveBuilder::run");
+    pub async fn run(mut self) -> eyre::Result<()> {
+        println!("[rb] Cecilia ==> LiveBuilder::run");
         info!("Builder block list size: {}", self.blocklist.len(),);
         info!(
             "Builder coinbase address: {:?}",
@@ -127,6 +128,7 @@ where
         // Cecilia!: call start_orderpool_jobs L1
         let mut orderpool_subscribers = HashMap::default();
         let orderpool_subscriber = {
+            self.order_input_config.skip = true;
             let (handle, sub) = start_orderpool_jobs(
                 self.order_input_config,
                 self.provider.clone(),
@@ -144,7 +146,7 @@ where
         providers.insert(self.chain_chain_spec.chain.id(), self.provider.clone());
 
         // Cecilia!: call start_orderpool_jobs L2
-        println!("WTF how many nodes are there? {:?}", self.gwyneth_nodes.nodes.len());
+        println!("[rb] WTF how many nodes are there? {:?}", self.gwyneth_nodes.nodes.len());
         for (chain_id, node) in self.gwyneth_nodes.nodes.iter() {
             let orderpool_subscriber = {
                 let (handle, sub) = start_orderpool_jobs(
@@ -186,8 +188,8 @@ where
         all_chain_ids.append(&mut providers.keys().cloned().collect::<Vec<_>>());
 
         while let Some(payload) = payload_events_channel.recv().await {
-            println!("Payload_attributes event received");
-            println!("Parent block's hash: {:?}", payload.parent_block_hash());
+            println!("[rb] Payload_attributes event received");
+            println!("[rb] Parent block's hash: {:?}", payload.parent_block_hash());
 
             if self.blocklist.contains(&payload.fee_recipient()) {
                 warn!(
@@ -216,17 +218,16 @@ where
                 continue;
             };
 
-            let parent_header = {
+            // this is the parent L1 block where we should build the L2 blocs upon
+            let parent_header = { 
                 // @Nicer
                 let parent_block = payload.parent_block_hash();
                 let timestamp = payload.timestamp();
                 let ln = self.provider.last_block_number()?;
-                let bn = self.provider.best_block_number()?;
-                let info = self.provider.chain_info()?;
-                println!("Cecilia debug 💥 {:?}\n{:?} {:?}", info, ln, bn);
+                println!("[rb] LiveBuilder.run against 💥 {}-{:?}\nlocal P lastest {:?}", payload.block() - 1, parent_block, ln);
 
                 match wait_for_block_header(parent_block, timestamp, &self.provider).await {
-                    Ok(header) => header,
+                    Ok(header) => header, 
                     Err(err) => {
                         warn!("Failed to get parent header for new slot: {:?}", err);
                         continue;
@@ -242,7 +243,7 @@ where
 
             inc_active_slots();
 
-            println!("Dani debug: build block context");
+            println!("[rb] Dani debug: build block context");
             let block_ctx = ChainBlockBuildingContext::from_attributes(
                 payload.payload_attributes_event.clone(),
                 &parent_header,
@@ -260,22 +261,25 @@ where
             // TODO: Brecht
             let mut block_ctx_with_l2s = HashMap::default();
             for (&chain_id, _) in providers.iter() {
-                println!("setting up {}", chain_id);
+                println!("[rb] setting up {}", chain_id);
                 let mut block_ctx = block_ctx.clone();
                 let mut chain_spec = (*block_ctx.chain_spec).clone();
-                println!("chain spec chain id: {}", chain_spec.chain.id());
                 if chain_spec.chain.id() != chain_id {
-                    println!("updating ctx for {}", chain_id);
+                
+                    println!("[rb] updating ctx for {}", chain_id);
+                    // This shoud be build upon the parent L1 block
+                    // query the synced L1 block inside this L2 node and see if they match
+                    // if it's sycned one is lower, then wait
                     let latest_header = self
                         .gwyneth_nodes
-                        .get_latest_header(chain_id)
+                        .get_latest_header(chain_id) 
                         .await?;
                     if let Some(latest_header) = latest_header {
                         // TODO: hash_slow?
                         block_ctx.attributes.parent = latest_header.hash();
                         block_ctx.block_env.number = U256::from(latest_header.number + 1);
                     } else {
-                        println!("failed to get latest block for {}", chain_id);
+                        println!("[rb] failed to get latest block for {}", chain_id);
                     }
                     chain_spec.chain = Chain::from(chain_id);
                     block_ctx.chain_spec = chain_spec.into();
@@ -293,7 +297,7 @@ where
                 Some(self.coinbase_signer.clone()),
             );
 
-            println!("Start building");
+            println!("[rb] Start building");
             builder_pool.start_block_building(
                 payload,
                 super_block_ctx,
@@ -328,8 +332,8 @@ where
     // let layer2_info = Some(Layer2Info::new(ipc_paths, data_dirs).await?);
 
     // match layer2_info.get_latest_block(chain_id).await? {
-    //     Some(latest_block) => println!("Latest block: {:?}", latest_block),
-    //     None => println!("Chain ID not found"),
+    //     Some(latest_block) => println!("[rb] Latest block: {:?}", latest_block),
+    //     None => println!("[rb] Chain ID not found"),
     // }
 
 //     Ok(())

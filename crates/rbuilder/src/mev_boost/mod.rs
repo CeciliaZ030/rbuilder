@@ -444,7 +444,7 @@ impl RelayClient {
         ssz: bool,
         gzip: bool,
     ) -> Result<Response, SubmitBlockErr> {
-        println!("call_relay_submit_block");
+        println!("[rb] call_relay_submit_block");
         let url = {
             let mut url = self.url.clone();
             url.set_path("/relay/v1/builder/blocks");
@@ -760,9 +760,9 @@ mod tests {
             .await
             .expect("Failed to get validators");
 
-        println!("len: {}", result.len());
+        println!("[rb] len: {}", result.len());
         assert!(!result.is_empty());
-        println!("result[0]: {:#?}", result[0]);
+        println!("[rb] result[0]: {:#?}", result[0]);
     }
 
     #[ignore]
@@ -771,7 +771,7 @@ mod tests {
         let srv = match FakeMevBoostRelay::new().spawn() {
             Some(srv) => srv,
             None => {
-                println!("mev-boost binary not found, skipping test");
+                println!("[rb] mev-boost binary not found, skipping test");
                 return;
             }
         };

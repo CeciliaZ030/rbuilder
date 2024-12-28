@@ -415,8 +415,6 @@ impl<'a, 'b, Tracer: SimulationTracer> PartialBlockFork<'a, 'b, Tracer> {
         gas_reserved: u64,
         mut cumulative_blob_gas_used: u64,
     ) -> Result<Result<TransactionOk, TransactionErr>, CriticalCommitOrderError> {
-        //println!("commit_tx!");
-        //println!("commit_tx!");
         // Use blobs.len() instead of checking for tx type just in case in the future some other new txs have blobs
         let blob_gas_used = tx_with_blobs.blobs_sidecar.blobs.len() as u64 * DATA_GAS_PER_BLOB;
         if cumulative_blob_gas_used + blob_gas_used > MAX_DATA_GAS_PER_BLOCK {
@@ -463,7 +461,7 @@ impl<'a, 'b, Tracer: SimulationTracer> PartialBlockFork<'a, 'b, Tracer> {
 
         let mut env = env.clone();
         env.cfg.chain_id = tx.chain_id().unwrap();
-        //println!("active remv chain_id: {}", env.cfg.chain_id);
+        //println!("[rb] active remv chain_id: {}", env.cfg.chain_id);
 
         let mut evm = revm::Evm::builder()
             .with_spec_id(ctx.spec_id)

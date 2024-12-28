@@ -42,27 +42,27 @@ pub async fn subscribe_to_txpool_with_blobs(
         let mut stream = pin!(stream);
 
         while let Some(tx_hash) = stream.next().await {
-            println!("Dani debug: Some txn arrived on {:?}", config.ipc_path);
+            println!("[rb] Dani debug: Some txn arrived on {:?}", config.ipc_path);
 
             // TODO: Skip L1 transactions for now because circular
-            if config.ipc_path.to_str().unwrap() == "/tmp/reth.ipc" {
-                println!("skipping!");
+            if config.skip {
+                println!("[rb] skipping!");
                 continue;
             }
             let start = Instant::now();
 
             let tx_with_blobs = match get_tx_with_blobs(tx_hash, &provider).await {
                 Ok(Some(tx_with_blobs)) => {
-                    println!("Dani debug: tx retrieved");
+                    println!("[rb] Dani debug: tx retrieved");
                     tx_with_blobs
                 }
                 Ok(None) => {
-                    println!("Dani debug: tx not found in tx pool");
+                    println!("[rb] Dani debug: tx not found in tx pool");
                     trace!(?tx_hash, "tx not found in tx pool");
                     continue;
                 }
                 Err(err) => {
-                    println!("Dani debug: Failed to get tx pool");
+                    println!("[rb] Dani debug: Failed to get tx pool");
                     error!(?tx_hash, ?err, "Failed to get tx pool");
                     continue;
                 }
@@ -118,7 +118,7 @@ async fn get_tx_with_blobs(
     // TODO: Use https://github.com/alloy-rs/alloy/pull/1168 when it gets cut
     // in a release
     let string_representation = format!("{:x}", tx_hash);
-    println!("get tx hash: {:?}", string_representation);
+    println!("[rb] get tx hash: {:?}", string_representation);
     let raw_tx: Option<String> = provider
         .client()
         .request("eth_getRawTransactionByHash", vec![tx_hash])

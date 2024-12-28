@@ -14,6 +14,7 @@ use self::{
     replaceable_order_sink::ReplaceableOrderSink,
 };
 use crate::{backtest::fetch::mempool, primitives::{serialize::CancelShareBundle, BundleReplacementKey, Order}};
+use futures::stream::Skip;
 use jsonrpsee::RpcModule;
 use reth_provider::StateProviderFactory;
 use std::{
@@ -97,7 +98,10 @@ pub struct OrderInputConfig {
     results_channel_timeout: Duration,
     /// Size of the bounded channel.
     pub input_channel_buffer_size: usize,
+    /// Skip transactions or bundles of this chain
+    pub skip: bool,
 }
+
 pub const DEFAULT_SERVE_MAX_CONNECTIONS: u32 = 4096;
 pub const DEFAULT_RESULTS_CHANNEL_TIMEOUT: Duration = Duration::from_millis(50);
 pub const DEFAULT_INPUT_CHANNEL_BUFFER_SIZE: usize = 10_000;
@@ -112,6 +116,7 @@ impl OrderInputConfig {
         serve_max_connections: u32,
         results_channel_timeout: Duration,
         input_channel_buffer_size: usize,
+        skip: bool,
     ) -> Self {
         Self {
             ignore_cancellable_orders,
@@ -122,6 +127,7 @@ impl OrderInputConfig {
             serve_max_connections,
             results_channel_timeout,
             input_channel_buffer_size,
+            skip,
         }
     }
 
@@ -141,6 +147,7 @@ impl OrderInputConfig {
             serve_max_connections: 4096,
             results_channel_timeout: Duration::from_millis(50),
             input_channel_buffer_size: 10_000,
+            skip: false,
         })
     }
 
@@ -154,6 +161,7 @@ impl OrderInputConfig {
             serve_max_connections: 4096,
             server_ip: Ipv4Addr::new(127, 0, 0, 1),
             server_port: 0,
+            skip: false,
         }
     }
 }
@@ -195,7 +203,7 @@ pub async fn start_orderpool_jobs<P>(
 where
     P: StateProviderFactory + 'static,
 {
-    println!("Cecilia ==> start_orderpool_jobs");
+    println!("[rb] Cecilia ==> start_orderpool_jobs");
     if config.ignore_cancellable_orders {
         warn!("ignore_cancellable_orders is set to true, some order input is ignored");
     }
@@ -225,6 +233,7 @@ where
         global_cancel.clone(),
     )
     .await?;
+    
     let txpool_fetcher = match ethapi {
         // In process handle
         Some(ethapi) => mempool_fetcher::subscribe_to_mempool_with_blobs(
@@ -255,7 +264,7 @@ where
                     if n == 0 {
                         break;
                     }
-                    println!("Dani debug: Received {} new commands", n);
+                    println!("[rb] Dani debug: Received {} new commands", n);
                 },
             };
 
@@ -297,7 +306,7 @@ where
                     new_commands.len()
                 );
                 orderpool.process_commands(new_commands.clone());
-                println!("Dani debug: Finished processing commands in OrderPool");
+                println!("[rb] Dani debug: Finished processing commands in OrderPool");
             }
             new_commands.clear();
         }

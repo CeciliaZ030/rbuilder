@@ -12,7 +12,7 @@ use super::{
         },
         block_sealing_bidder_factory::BlockSealingBidderFactory,
         relay_submit::{RelaySubmitSinkFactory, SubmissionConfig},
-    }, gwyneth::{EthApiStream, GwynethMempoolReciever},
+    }, gwyneth::{EthApiStream, EthTxSender, GwynethMempoolReciever},
 };
 use crate::{
     beacon_api_client::Client,
@@ -52,6 +52,7 @@ use ethereum_consensus::{
     state_transition::Context as ContextEth,
 };
 use eyre::Context;
+use jsonrpsee::http_client::HttpClient;
 use reth::{builder::NodeConfig, tasks::pool::BlockingTaskPool};
 use reth_chainspec::{Chain, ChainSpec, NamedChain};
 use reth_db::{Database, DatabaseEnv};
@@ -107,6 +108,21 @@ pub struct Config {
     /// selected builder configurations
     pub builders: Vec<BuilderConfig>,
 }
+
+#[derive(Clone, Debug)]
+pub struct RethInput<P> {
+    /// States of L1 client used in the building process
+    pub l1_provider: P,
+    /// States of L2 client used in the building process
+    pub l2_providers: Vec<P>,
+    /// Get header stream to for build ctx and transaction stream from reth mempool for L1
+    pub l1_ethapi: Option<Arc<dyn EthApiStream>>,
+    /// Get header stream to for build ctx and transaction stream from reth mempool for L2
+    pub l2_ethapis: Option<Vec<Arc<dyn EthApiStream>>>,
+    // Send transactions to L1 in BlockProposer
+    pub l1_client: Option<HttpClient>
+}
+
 
 #[serde_as]
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -170,9 +186,10 @@ impl L1Config {
 
         assert!(relay_proposer.l1_proposer_pk.is_some(), "L1 proposer private key should be set");
         assert!(relay_proposer.l1_rollup_contract.is_some(), "L1 rollup contract should be set");    
-        let url = format!("https://{}", SocketAddr::new(l1_node_config.rpc.http_addr, l1_node_config.rpc.http_port).to_string());
-        relay_proposer.l1_rpc_url = Some(url);
-        println!("Cecilia ==> L1Config::update_in_process_setting {:?}", self.relays.get_mut(0).unwrap().l1_rpc_url);
+        // let url = format!("https://{}", SocketAddr::new(l1_node_config.rpc.http_addr, l1_node_config.rpc.http_port).to_string());
+        // relay_proposer.l1_rpc_url = Some(url);
+        // println!("[rb] Cecilia ==> L1Config::update_in_process_setting {:?}", self.relays.get_mut(0).unwrap().l1_rpc_url);
+        // relay_proposer.chain_id = Some(l1_node_config.chain.chain.id());
     }
 
     pub fn resolve_cl_node_urls(&self) -> eyre::Result<Vec<String>> {
@@ -183,18 +200,20 @@ impl L1Config {
         self.cl_node_url
             .iter()
             .map(|url| {
-                println!("cl_node_url: {:?} {:?}", url, url.value());
+                println!("[rb] cl_node_url: {:?} {:?}", url, url.value());
                 let url = Url::parse(&url.value()?)?;
                 Ok(Client::new(url))
             })
             .collect()
     }
 
-    pub fn create_relays(&self) -> eyre::Result<Vec<MevBoostRelay>> {
+    pub fn create_relays(&self, l1_client: Option<HttpClient>) -> eyre::Result<Vec<MevBoostRelay>> {
         let mut results = Vec::new();
-        for relay in &self.relays {
-            println!("Dani debug - create relays: {:?}", relay);
-            results.push(MevBoostRelay::from_config(relay)?);
+        for config in &self.relays {
+            println!("[rb] Dani debug - create relays: {:?}", config);
+            // Only the config with l1 proposer infos will have BlockProposer
+            let relay = MevBoostRelay::from_config(config, l1_client.clone())?;
+            results.push(relay);
         }
         Ok(results)
     }
@@ -283,6 +302,7 @@ impl L1Config {
         &self,
         chain_spec: Arc<ChainSpec>,
         bid_observer: Box<dyn BidObserver + Send + Sync>,
+        l1_client: Option<HttpClient>,
     ) -> eyre::Result<(Box<dyn BuilderSinkFactory>, Vec<MevBoostRelay>)> {
         let submission_config = self.submission_config(chain_spec, bid_observer)?;
         info!(
@@ -300,7 +320,7 @@ impl L1Config {
             format_ether(submission_config.optimistic_max_bid_value),
         );
 
-        let relays = self.create_relays()?;
+        let relays = self.create_relays(l1_client)?;
         let sink_factory: Box<dyn BuilderSinkFactory> = Box::new(RelaySubmitSinkFactory::new(
             submission_config,
             relays.clone(),
@@ -316,25 +336,25 @@ impl LiveBuilderConfig for Config {
 
     async fn new_builder<P, DB>(
         &self,
-        provider: P,
-        l2_providers: Vec<P>,
-        l1_ethapi: Option<Arc<dyn EthApiStream>>,
-        l2_ethapis: Option<Vec<Arc<dyn EthApiStream>>>,
+        reth_input: RethInput<P>,
         cancellation_token: tokio_util::sync::CancellationToken,
     ) -> eyre::Result<super::LiveBuilder<P, DB, MevBoostSlotDataGenerator>>
     where
         DB: Database + Clone + 'static,
         P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
     {
-        println!("Cecilia ==> LiveBuilderConfig::new_builder");
+        println!("[rb] Cecilia ==> LiveBuilderConfig::new_builder");
+
+        let RethInput { l1_provider, l2_providers, l1_ethapi, l2_ethapis, l1_client } = reth_input.clone();
 
         let (sink_sealed_factory, relays) = self.l1_config.create_relays_sealed_sink_factory(
             self.base_config.chain_spec()?,
             Box::new(NullBidObserver {}),
+            l1_client
         )?;
 
         let (wallet_balance_watcher, wallet_history) = WalletBalanceWatcher::new(
-            provider.clone(),
+            l1_provider.clone(),
             self.base_config.coinbase_signer()?.address.1,
             WALLET_INIT_HISTORY_SIZE,
         )?;
@@ -356,25 +376,16 @@ impl LiveBuilderConfig for Config {
             cancellation_token.clone(),
         );
 
-        let live_builder = match (l1_ethapi, l2_ethapis) {
-            (Some(l1_ethapi), Some(l2_ethapis)) => {
-                self
-                    .base_config
-                    .create_in_process_builder(
-                        cancellation_token,
-                        sink_factory,
-                        payload_event,
-                        provider,
-                        l2_providers,
-                        l1_ethapi,
-                        l2_ethapis
-                    )
-                    .await?
-            }
-            // Todo(Cecilia): No plan to support IPC path
-            _ => unimplemented!(),
-        };
-        
+        let live_builder = self
+            .base_config
+            .create_in_process_builder(
+                cancellation_token,
+                sink_factory,
+                payload_event,
+                reth_input,
+            )
+            .await?;
+            
         let root_hash_config = self.base_config.live_root_hash_config()?;
         let root_hash_task_pool = self.base_config.root_hash_task_pool()?;
         let builders = create_builders(

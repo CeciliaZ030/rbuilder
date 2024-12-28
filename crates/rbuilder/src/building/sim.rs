@@ -160,12 +160,12 @@ where
             match onchain_nonce.cmp(&nonce.nonce) {
                 Ordering::Equal => {
                     // nonce, valid
-                    println!("nonce ok");
+                    println!("[rb] nonce ok");
                     onchain_nonces_incremented.insert(nonce.address);
                     continue;
                 }
                 Ordering::Greater => {
-                    println!("nonce invalid");
+                    println!("[rb] nonce invalid");
                     // nonce invalid, maybe its optional
                     if !nonce.optional {
                         // this order will never be valid
@@ -181,7 +181,7 @@ where
                     }
                 }
                 Ordering::Less => {
-                    println!("nonce invalid");
+                    println!("[rb] nonce invalid");
                     if onchain_nonces_incremented.contains(&nonce.address) {
                         // we already considered this account nonce
                         continue;
@@ -451,7 +451,7 @@ pub fn simulate_order_using_fork<Tracer: SimulationTracer>(
     ctx: &BlockBuildingContext,
     fork: &mut PartialBlockFork<'_, '_, Tracer>,
 ) -> Result<OrderSimResult, CriticalCommitOrderError> {
-    println!("simulate_order_using_fork");
+    println!("[rb] simulate_order_using_fork");
 
     // simulate parents
     let mut prev_order = None;

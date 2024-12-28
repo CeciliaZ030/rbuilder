@@ -167,7 +167,7 @@ where
         csv_writer.write_data(values)?;
     } else {
         for (address, value) in old_output {
-            println!("{}: {}", address, format_ether(value));
+            println!("[rb] {}: {}", address, format_ether(value));
         }
     }
 

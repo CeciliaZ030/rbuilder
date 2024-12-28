@@ -1,11 +1,15 @@
+use crate::live_builder::gwyneth::{EthApiStream, EthTxSender};
 use crate::mev_boost::{RelayClient, SubmitBlockErr, SubmitBlockRequest};
 
 use crate::proposing::BlockProposer;
 
 use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
+use jsonrpsee::http_client::HttpClient;
 use serde::{Deserialize, Deserializer};
+use web3::contract;
 use std::{env, sync::Arc, time::Duration};
 use url::Url;
+
 
 /// Usually human readable id for relays. Not used on anything on any protocol just to identify the relays.
 pub type MevBoostRelayID = String;
@@ -27,12 +31,11 @@ pub struct RelayConfig {
     pub authorization_header: Option<String>,
     #[serde(default, deserialize_with = "deserialize_env_var")]
     pub builder_id_header: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_env_var")]
     pub api_token_header: Option<String>,
     #[serde(default)]
     pub interval_between_submissions_ms: Option<u64>,
-    #[serde(default, deserialize_with = "deserialize_env_var")]
-    pub l1_rpc_url: Option<String>,
+
+    pub l1_proposal_url: Option<String>,
     pub l1_proposer_pk: Option<String>,
     pub l1_rollup_contract: Option<String>,
 }
@@ -73,7 +76,8 @@ pub struct MevBoostRelay {
 }
 
 impl MevBoostRelay {
-    pub fn from_config(config: &RelayConfig) -> eyre::Result<Self> {
+    
+    pub fn from_config(config: &RelayConfig, l1_client: Option<HttpClient>) -> eyre::Result<Self> {
         let client = {
             let url: Url = config.url.parse()?;
             RelayClient::from_url(
@@ -90,20 +94,16 @@ impl MevBoostRelay {
             ))
         });
 
-        let block_proposer =
-            if let (Some(l1_rpc_url), Some(l1_smart_contract_address), Some(l1_proposer_pk)) = (
-                &config.l1_rpc_url,
-                &config.l1_rollup_contract,
-                &config.l1_proposer_pk,
-            ) {
-                Some(BlockProposer::new(
-                    l1_rpc_url.clone(),
-                    l1_smart_contract_address.clone(),
-                    l1_proposer_pk.clone(),
-                )?)
-            } else {
-                None
-            };
+        let block_proposer = if let (Some(l1_proposer_pk), Some(contract_address)) = (&config.l1_proposer_pk, &config.l1_rollup_contract) {
+            Some(BlockProposer::new(
+                l1_client, 
+                config.l1_proposal_url.clone(), 
+                contract_address.clone(), 
+                l1_proposer_pk.clone()
+            )?)
+        } else {
+            None
+        };
 
         Ok(MevBoostRelay {
             id: config.name.to_string(),
@@ -120,7 +120,7 @@ impl MevBoostRelay {
     // Brecht: Can make a proposeBlock call here to L1 with the given block
     // Can implement a custom "relay" for gwyneth that has this behaviour
     pub async fn submit_block(&self, data: &SubmitBlockRequest) -> Result<(), SubmitBlockErr> {
-        println!("Brecht: L1 propose!");
+        println!("[rb] Brecht: L1 propose!");
 
         // Handle the Option<BlockProposer>
         if let Some(proposer) = &self.block_proposer {
@@ -128,10 +128,10 @@ impl MevBoostRelay {
             proposer
                 .propose_block(data)
                 .await
-                .map_err(|e| SubmitBlockErr::SimError(e.to_string()))?;
+                .map_err(|e| SubmitBlockErr::RelayError(e.into()))?;
         } else {
             // Handle the case where there's no BlockProposer
-            println!("No L1 block proposer configured");
+            println!("[rb] No L1 block proposer configured");
         }
 
         self.client
