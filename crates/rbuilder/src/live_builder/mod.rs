@@ -223,8 +223,7 @@ where
                 // @Nicer
                 let parent_block = payload.parent_block_hash();
                 let timestamp = payload.timestamp();
-                let ln = self.provider.last_block_number()?;
-                println!("[rb] LiveBuilder.run against 💥 {}-{:?}\nlocal P lastest {:?}", payload.block() - 1, parent_block, ln);
+                println!("[rb] LiveBuilder.run against 💥  {} {:?}", payload.block() - 1, parent_block);
 
                 match wait_for_block_header(parent_block, timestamp, &self.provider).await {
                     Ok(header) => header, 
@@ -244,7 +243,8 @@ where
             inc_active_slots();
 
             println!("[rb] Dani debug: build block context");
-            let block_ctx = ChainBlockBuildingContext::from_attributes(
+            let mut all_block_ctxs = HashMap::default();
+            let l1_block_ctx = ChainBlockBuildingContext::from_attributes(
                 payload.payload_attributes_event.clone(),
                 &parent_header,
                 self.coinbase_signer.clone(),
@@ -254,46 +254,50 @@ where
                 self.extra_data.clone(),
                 None,
             );
-
+            all_block_ctxs.insert(self.chain_chain_spec.chain.id(), l1_block_ctx.clone());
             // TODO(Brecht): hack to wait until latest L2 block is also created, which is later then when we get the payload build event
-            sleep(Duration::from_millis(4000));
+            // sleep(Duration::from_millis(4000));
 
             // TODO: Brecht
-            let mut block_ctx_with_l2s = HashMap::default();
-            for (&chain_id, _) in providers.iter() {
-                println!("[rb] setting up {}", chain_id);
-                let mut block_ctx = block_ctx.clone();
-                let mut chain_spec = (*block_ctx.chain_spec).clone();
-                if chain_spec.chain.id() != chain_id {
-                
-                    println!("[rb] updating ctx for {}", chain_id);
-                    // This shoud be build upon the parent L1 block
-                    // query the synced L1 block inside this L2 node and see if they match
-                    // if it's sycned one is lower, then wait
-                    let latest_header = self
-                        .gwyneth_nodes
-                        .get_latest_header(chain_id) 
-                        .await?;
-                    if let Some(latest_header) = latest_header {
-                        // TODO: hash_slow?
-                        block_ctx.attributes.parent = latest_header.hash();
-                        block_ctx.block_env.number = U256::from(latest_header.number + 1);
-                    } else {
-                        println!("[rb] failed to get latest block for {}", chain_id);
-                    }
-                    chain_spec.chain = Chain::from(chain_id);
-                    block_ctx.chain_spec = chain_spec.into();
+
+            for (idx, (&chain_id, _)) in providers.iter().enumerate() {
+                if l1_block_ctx.chain_spec.chain.id() == chain_id {
+                    continue;
                 }
+                // The first idx is L1, the rests should be in-order
+                self.gwyneth_nodes.sync(idx - 1, parent_header.number, payload.parent_block_hash()).await?;
+
+                println!("[rb] setting up {}", chain_id);
+                let mut block_ctx = l1_block_ctx.clone();
+                // This shoud be build upon the parent L1 block
+                // query the synced L1 block inside this L2 node and see if they match
+                // if it's sycned one is lower, then wait
+                let latest_header = self
+                    .gwyneth_nodes
+                    .get_latest_header(chain_id) 
+                    .await?;
+                if let Some(latest_header) = latest_header {
+                    // TODO: hash_slow?
+                    block_ctx.attributes.parent = latest_header.hash();
+                    block_ctx.block_env.number = U256::from(latest_header.number + 1);
+                } else {
+                    println!("[rb] failed to get latest block for {}", chain_id);
+                }
+                // TODO(Cecilia): should read ChainSpecs for different chains, not just changing the chain_id
+                let mut chain_spec = (*block_ctx.chain_spec).clone();;
+                chain_spec.chain = Chain::from(chain_id);
+                block_ctx.chain_spec = chain_spec.into();
+                
                 println!(
                     "Latest block hash for {} is {}",
                     chain_id, block_ctx.attributes.parent
                 );
-                block_ctx_with_l2s.insert(chain_id, block_ctx);
+                all_block_ctxs.insert(chain_id, block_ctx);
             }
 
             let super_block_ctx = BlockBuildingContext::from_attributes(
                 self.chain_chain_spec.chain.id(),
-                block_ctx_with_l2s,
+                all_block_ctxs,
                 Some(self.coinbase_signer.clone()),
             );
 

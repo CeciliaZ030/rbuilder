@@ -8017,6 +8017,7 @@ dependencies = [
  "reth-engine-primitives",
  "reth-errors",
  "reth-ethereum-consensus",
+ "reth-exex",
  "reth-metrics",
  "reth-network-p2p",
  "reth-payload-builder",
@@ -8513,6 +8514,7 @@ dependencies = [
  "reth-engine-primitives",
  "reth-engine-tree",
  "reth-evm",
+ "reth-exex",
  "reth-network-p2p",
  "reth-payload-builder",
  "reth-payload-validator",
@@ -8539,6 +8541,7 @@ dependencies = [
  "reth-engine-primitives",
  "reth-errors",
  "reth-evm",
+ "reth-exex",
  "reth-metrics",
  "reth-network-p2p",
  "reth-payload-builder",
@@ -8822,6 +8825,7 @@ name = "reth-exex-types"
 version = "1.0.6"
 dependencies = [
  "alloy-primitives 0.8.9",
+ "reth-primitives",
  "reth-provider",
 ]
 

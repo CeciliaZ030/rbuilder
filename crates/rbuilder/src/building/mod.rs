@@ -106,13 +106,13 @@ impl BlockBuildingContext {
     /// spec_id None: we use the proper SpecId for the block timestamp.
     pub fn from_attributes(
         parent_chain_id: u64,
-        chains: HashMap<u64, ChainBlockBuildingContext>,
+        chain_ctxs: HashMap<u64, ChainBlockBuildingContext>,
         builder_signer: Option<Signer>,
     ) -> Self {
         Self {
-            initialized_cfg: chains[&parent_chain_id].initialized_cfg.clone(),
+            initialized_cfg: chain_ctxs.get(&parent_chain_id).expect("ChainBlockBuildingContext Not found").initialized_cfg.clone(),
             parent_chain_id,
-            chains,
+            chains: chain_ctxs,
             builder_signer,
             blocklist: HashSet::default(),
         }
@@ -128,8 +128,8 @@ impl BlockBuildingContext {
         builder_signer: Option<Signer>,
     ) -> Self {
         let parent_chain_id = chain_spec.chain.id();
-        let mut chains = HashMap::default();
-        chains.insert(
+        let mut chain_ctxs = HashMap::default();
+        chain_ctxs.insert(
             parent_chain_id,
             ChainBlockBuildingContext::from_onchain_block(
                 onchain_block,
@@ -141,7 +141,7 @@ impl BlockBuildingContext {
                 builder_signer.clone(),
             ),
         );
-        Self::from_attributes(parent_chain_id, chains, builder_signer)
+        Self::from_attributes(parent_chain_id, chain_ctxs, builder_signer)
     }
 
     /// Useless BlockBuildingContext for testing in contexts where we can't avoid having a BlockBuildingContext.

@@ -52,6 +52,7 @@ use ethereum_consensus::{
     state_transition::Context as ContextEth,
 };
 use eyre::Context;
+use gwyneth::exex::L1ParentStates;
 use jsonrpsee::http_client::HttpClient;
 use reth::{builder::NodeConfig, tasks::pool::BlockingTaskPool};
 use reth_chainspec::{Chain, ChainSpec, NamedChain};
@@ -115,6 +116,8 @@ pub struct RethInput<P> {
     pub l1_provider: P,
     /// States of L2 client used in the building process
     pub l2_providers: Vec<P>,
+    // Latest L1 parent of each L2 chain
+    pub l1_parents: L1ParentStates,
     /// Get header stream to for build ctx and transaction stream from reth mempool for L1
     pub l1_ethapi: Option<Arc<dyn EthApiStream>>,
     /// Get header stream to for build ctx and transaction stream from reth mempool for L2
@@ -345,7 +348,7 @@ impl LiveBuilderConfig for Config {
     {
         println!("[rb] Cecilia ==> LiveBuilderConfig::new_builder");
 
-        let RethInput { l1_provider, l2_providers, l1_ethapi, l2_ethapis, l1_client } = reth_input.clone();
+        let RethInput { l1_provider, l2_providers, l1_parents, l1_ethapi, l2_ethapis, l1_client } = reth_input.clone();
 
         let (sink_sealed_factory, relays) = self.l1_config.create_relays_sealed_sink_factory(
             self.base_config.chain_spec()?,

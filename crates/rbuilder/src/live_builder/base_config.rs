@@ -282,10 +282,11 @@ impl BaseConfig {
         SlotSourceType: SlotSource,
     {
         println!("[rb] Cecilia ==> BaseConfig::create_in_process_builder");
-        let RethInput { l1_provider, l2_providers, l1_ethapi, l2_ethapis, l1_client } = reth_input;
+        let RethInput { l1_provider, l2_providers, l1_parents, l1_ethapi, l2_ethapis, l1_client } = reth_input;
         let gwyneth_nodes = GwynethNodes::new(
             self.gwyneth_chain_ids.clone().unwrap(),
             l2_providers, 
+            l1_parents,
             l2_ethapis.expect("L2 ethapis not provided to init GwynethNodes"),
             self.l2_server_ports.clone().expect("Server ports not provided to init GwynethNodes")
         )?;

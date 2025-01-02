@@ -1,5 +1,5 @@
 use gwyneth::{
-    cli::{create_gwyneth_nodes, GwynethArgs}, exex::GwynethFullNode,
+    cli::{create_gwyneth_nodes, GwynethArgs}, exex::{GwynethFullNode, L1ParentStates},
 };
 use rbuilder::{
     live_builder::{base_config::load_config_toml_and_env, cli::LiveBuilderConfig, config::{Config, RethInput}, gwyneth::{EthApiStream, EthTxSender, GwynethMempoolReciever}},
@@ -12,7 +12,7 @@ use reth_provider::{
     providers::{BlockchainProvider, BlockchainProvider2},
     DatabaseProviderFactory, HeaderProvider, StateProviderFactory,
 };
-use std::{path::PathBuf, pin::pin, process, sync::Arc};
+use std::{borrow::Borrow, path::PathBuf, pin::pin, process, sync::Arc};
 use tokio::task;
 use tracing::{error, instrument::WithSubscriber};
 
@@ -32,7 +32,7 @@ fn main() -> eyre::Result<()> {
         let l1_node_config = builder.config().clone();
         let task_executor = builder.task_executor().clone();
         let gwyneth_nodes = create_gwyneth_nodes(&arg, task_executor.clone(), &l1_node_config).await;
-
+        let l1_parents = L1ParentStates::new(gwyneth_nodes.len());
 
         let enable_engine2 = arg.experimental;
         match enable_engine2 {
@@ -50,6 +50,7 @@ fn main() -> eyre::Result<()> {
                     })
                     .collect::<(Vec<_>, Vec<_>)>();
 
+                let l1_parents_ = l1_parents.clone();
                 let handle = builder
                     .with_types_and_provider::<EthereumNode, BlockchainProvider2<_>>()
                     .with_components(EthereumNode::components())
@@ -59,6 +60,7 @@ fn main() -> eyre::Result<()> {
                         let reth_input = RethInput {
                             l1_provider: ctx.provider().clone(),
                             l2_providers: l2_providers.clone(),
+                            l1_parents: l1_parents_.clone(),
                             l1_ethapi: Some(Arc::new(ctx.registry.eth_handlers().pubsub.clone())),
                             l2_ethapis: Some(l2_ethapis.clone()),
                             l1_client: handles.rpc.http_client()
@@ -66,9 +68,8 @@ fn main() -> eyre::Result<()> {
                         spawn_rbuilder(&arg, &l1_node_config, reth_input)
                     })
                     .install_exex("Rollup", move |ctx| async {
-                        Ok(gwyneth::exex::Rollup::new(ctx, gwyneth_nodes)
-                            .await?
-                            .start())
+                        let rollup = gwyneth::exex::Rollup::new(ctx, gwyneth_nodes, l1_parents).await?;
+                        Ok(rollup.start())
                     })
                     .launch_with_fn(|builder| {
                         let launcher = EngineNodeLauncher::new(
@@ -94,12 +95,13 @@ fn main() -> eyre::Result<()> {
                     })
                     .collect::<(Vec<_>, Vec<_>)>();
 
+                let l1_parents_ = l1_parents.clone();
                 let handle = builder
                     .with_types_and_provider::<EthereumNode, BlockchainProvider<_>>()
                     .with_components(EthereumNode::components())
                     .with_add_ons::<EthereumAddOns>()
                     .install_exex("Rollup", move |ctx| async {
-                        Ok(gwyneth::exex::Rollup::new(ctx, gwyneth_nodes)
+                        Ok(gwyneth::exex::Rollup::new(ctx, gwyneth_nodes, l1_parents_)
                             .await?
                             .start())
                     })
@@ -107,6 +109,7 @@ fn main() -> eyre::Result<()> {
                         let reth_input = RethInput {
                             l1_provider: ctx.provider().clone(),
                             l2_providers: l2_providers.clone(),
+                            l1_parents: l1_parents.clone(),
                             l1_ethapi: Some(Arc::new(ctx.registry.eth_handlers().pubsub.clone())),
                             l2_ethapis: Some(l2_ethapis.clone()),
                             l1_client: handles.rpc.http_client()

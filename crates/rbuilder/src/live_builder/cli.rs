@@ -1,6 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use clap::Parser;
+use gwyneth::exex::L1ParentStates;
 use reth_db::Database;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
 use reth_provider::{DatabaseProviderFactory, HeaderProvider, StateProviderFactory};
@@ -108,6 +109,7 @@ where
     let reth_intput = RethInput {
         l1_provider: config.base_config().create_provider_reopener()?,
         l2_providers: config.base_config().gwyneth_provider_reopeners()?,
+        l1_parents: L1ParentStates::default(),
         l1_ethapi: None,
         l2_ethapis: None,
         l1_client: None,

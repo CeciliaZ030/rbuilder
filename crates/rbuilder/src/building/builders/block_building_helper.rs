@@ -184,6 +184,7 @@ where
                     .history_by_block_hash(building_ctx.chains[chain_id].attributes.parent)?
                     .into(),
             );
+            // TODO(Cecilia): fix this hack
             if *chain_id > origin_chain_id {
                 origin_chain_id = *chain_id;
             }

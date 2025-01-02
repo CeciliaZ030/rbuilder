@@ -9,6 +9,7 @@ use eyre::Result;
 use futures::future::IntoStream;
 use futures::stream::TakeUntil;
 use futures::{FutureExt, Stream, StreamExt};
+use gwyneth::exex::{L1ParentState, L1ParentStates};
 use reth::network::NetworkInfo;
 use reth::rpc::eth::EthPubSub;
 use reth::transaction_pool::{EthPoolTransaction, EthPooledTransaction, NewTransactionEvent, TransactionPool};
@@ -21,6 +22,7 @@ use reth_provider::{BlockReader, CanonStateSubscriptions, DatabaseProviderFactor
 use revm_primitives::{Address, B256};
 use tokio::sync::mpsc::Receiver;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
+use tracing::instrument::WithSubscriber;
 use std::fmt::Debug;
 use std::future::Future;
 use std::net::Ipv4Addr;
@@ -46,12 +48,14 @@ pub struct GwynethNode<P> {
 
 #[derive(Debug)]
 pub struct GwynethNodes<P> {
+    pub l1_parents: L1ParentStates,
     pub nodes: HashMap<u64, GwynethNode<P>>,
 }
 
 impl<P> Default for GwynethNodes<P> {
     fn default() -> Self {
         Self {
+            l1_parents: L1ParentStates::default(),
             nodes: HashMap::default(),
         }
     }
@@ -66,6 +70,7 @@ where
     pub fn new(
         chain_ids: Vec<u64>,
         providers: Vec<P>,
+        l1_parents: L1ParentStates,
         ethapis: Vec<Arc<dyn EthApiStream>>,
         server_ports: Vec<u16>,
     ) -> Result<Self> {
@@ -99,6 +104,7 @@ where
         }
         println!("[rb] WTF how many {:?}", nodes.len());
         Ok(Self {
+            l1_parents,
             nodes,
         })
     }
@@ -116,17 +122,17 @@ where
         }
     }
 
-    pub async fn get_synced_header(&self, chain_id: u64) -> Result<SealedHeader> {
-        if let Some(ethapi) = self.nodes.get(&chain_id).map(|n| n.ethapi.clone()) {
-            let number = ethapi.get_synced_header()?;
-            provider
-                .sealed_header(number)
-                .map_err(|e| eyre::eyre!("Error getting latest header for chain_id {}: {:?}", chain_id, e))
-                
-        } else {
-            eyre::bail!("No provider found for chain_id: {}", chain_id)
-        }    
-    }
+    pub async fn sync(&self, node_idx: usize, target_parent: u64, target_parent_hash: B256) -> Result<()> {
+        println!("[rb] waiting for node {:?} syncing to target parent {:?}", node_idx, target_parent);
+        while let (parent, hash) = self.l1_parents.get(node_idx) {
+            if parent != target_parent || hash.is_none() || hash.unwrap().hash() != target_parent_hash {
+                tokio::time::sleep(Duration::from_millis(300)).await;
+            } else {
+                return Ok(());
+            }
+        }
+        Ok(())
+    } 
 }
 
 pub trait EthApiStream: Send + Sync + Debug {  
