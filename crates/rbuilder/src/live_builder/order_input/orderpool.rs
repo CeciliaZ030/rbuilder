@@ -219,6 +219,7 @@ impl OrderPool {
         mut sink: Box<dyn ReplaceableOrderSink>,
     ) -> OrderPoolSubscriptionId {
         for order in self.mempool_txs.iter().map(|(order, _)| order.clone()) {
+            println!("[rb] OrderPool::add_sink adding mempool order {:?}", order);
             sink.insert_order(order);
         }
         for cancellation_key in self.bundle_cancellations.iter().map(|(key, _)| key) {
@@ -237,6 +238,7 @@ impl OrderPool {
         self.next_sink_id += 1;
         self.sinks
             .insert(res.clone(), SinkSubscription { sink, block_number });
+        println!("🦤 OrderPool::add_sink {:?} for block {:?} added {} mempool_txs", res, block_number, self.mempool_txs.len());
         res
     }
 
