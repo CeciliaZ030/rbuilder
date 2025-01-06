@@ -32,7 +32,7 @@ fn main() -> eyre::Result<()> {
         let l1_node_config = builder.config().clone();
         let task_executor = builder.task_executor().clone();
         let gwyneth_nodes = create_gwyneth_nodes(&arg, task_executor.clone(), &l1_node_config).await;
-        let l1_parents = L1ParentStates::new(gwyneth_nodes.len());
+        let l1_parents = L1ParentStates::new(&gwyneth_nodes);
 
         let enable_engine2 = arg.experimental;
         match enable_engine2 {

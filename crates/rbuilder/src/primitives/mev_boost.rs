@@ -128,15 +128,13 @@ impl MevBoostRelay {
             proposer
                 .propose_block(data)
                 .await
-                .map_err(|e| SubmitBlockErr::RelayError(e.into()))?;
+                .map_err(|e| SubmitBlockErr::RelayError(e.into()))
         } else {
             // Handle the case where there's no BlockProposer
-            println!("[rb] No L1 block proposer configured");
-        }
-
-        self.client
+            self.client
             .submit_block(data, self.use_ssz_for_submit, self.use_gzip_for_submit)
             .await
+        }
     }
 }
 

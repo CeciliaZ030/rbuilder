@@ -50,6 +50,7 @@ where
             let start = Instant::now();
 
             orderpool.head_updated(block_number, &state);
+            println!("[rb] Clean orderpool: head_updated {:?}", block_number);
 
             let update_time = start.elapsed();
             let (tx_count, bundle_count) = orderpool.content_count();

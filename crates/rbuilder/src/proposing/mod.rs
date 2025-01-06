@@ -78,7 +78,6 @@ impl BlockProposer {
     }
 
     pub async fn propose_block(&self, request: &SubmitBlockRequest) -> Result<(), RelayError> {
-        println!("[rb] propose_block");
 
         let execution_payload = request.execution_payload();
         let (meta, num_txs) = self.create_propose_block_tx_data(&execution_payload)
@@ -89,7 +88,7 @@ impl BlockProposer {
         }.abi_encode();
 
         let decoded_transactions: Vec<TransactionSigned> = decode_transactions(&meta.txList);
-        println!("[rb] decoded_transactions: {:?}", decoded_transactions);
+        println!("[rb] Propose block decoded_transactions: {:?}", decoded_transactions);
 
 
         // Create a signer from a random private key.
@@ -248,13 +247,6 @@ fn decode_transactions(tx_list: &[u8]) -> Vec<TransactionSigned> {
     #[allow(clippy::useless_asref)]
     Vec::<TransactionSigned>::decode(&mut tx_list.as_ref()).unwrap_or_else(|e| {
         // If decoding fails we need to make an empty block
-        println!("[rb] decode_transactions not successful: {e:?}, use empty tx_list");
         vec![]
     })
-}
-
-#[test]
-fn test_decode_transactions() {
-    let b = B256::default();
-    println!("[rb] b: {:?}", b);
 }

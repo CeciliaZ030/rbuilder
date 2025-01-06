@@ -259,6 +259,7 @@ impl OrderPool {
         // remove mempool txs by nonce, time
         self.mempool_txs.retain(|(order, time)| {
             if time.elapsed() > TIME_TO_KEEP_TXS {
+                println!("😰 OrderPool mempool_txs {:?} timeout", order.id());
                 return false;
             }
             for nonce in order.nonces() {
@@ -271,6 +272,7 @@ impl OrderPool {
                     .unwrap_or_default()
                     .unwrap_or_default();
                 if onchain_nonce > nonce.nonce {
+                    println!("😰 OrderPool mempool_txs {:?} for wrong nounce {:?} < {:?}", order.id(), onchain_nonce, nonce.nonce);
                     return false;
                 }
             }

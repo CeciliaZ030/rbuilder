@@ -265,7 +265,7 @@ where
                     continue;
                 }
                 // The first idx is L1, the rests should be in-order
-                self.gwyneth_nodes.sync(idx - 1, parent_header.number, payload.parent_block_hash()).await?;
+                self.gwyneth_nodes.sync(chain_id, parent_header.number, payload.parent_block_hash()).await?;
 
                 println!("[rb] setting up {}", chain_id);
                 let mut block_ctx = l1_block_ctx.clone();

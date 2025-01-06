@@ -122,13 +122,31 @@ where
         }
     }
 
-    pub async fn sync(&self, node_idx: usize, target_parent: u64, target_parent_hash: B256) -> Result<()> {
-        println!("[rb] waiting for node {:?} syncing to target parent {:?}", node_idx, target_parent);
-        while let (parent, hash) = self.l1_parents.get(node_idx) {
-            if parent != target_parent || hash.is_none() || hash.unwrap().hash() != target_parent_hash {
-                tokio::time::sleep(Duration::from_millis(300)).await;
+    pub async fn sync(&self, chain_id: u64, target_parent: u64, target_parent_hash: B256) -> Result<()> {
+        println!("[rb] waiting for node {:?} syncing to target parent {:?}", chain_id, target_parent);
+        loop {
+            let (parent, hash) = self.l1_parents.get(chain_id);
+            if parent < target_parent {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            } else if parent == target_parent {
+                match hash {
+                    Some(hash) => {
+                        if hash.hash() != target_parent_hash {
+                            eyre::bail!("Hash mismatch: {:?} != {:?}", hash.hash(), target_parent_hash);
+                        } else {
+                            break;
+                        }
+                    },
+                    None => {
+                        tokio::time::sleep(Duration::from_millis(200)).await;
+                    }
+                }
             } else {
-                return Ok(());
+                // Let's YOLO, in this case L2s are built against an old parent
+                warn!("L2 Parent is ahead of target parent: {} > {}", parent, target_parent);
+                break;
+                // return Err(eyre::eyre!("Parent is ahead of target parent: {} > {}", parent, target_parent));
+
             }
         }
         Ok(())

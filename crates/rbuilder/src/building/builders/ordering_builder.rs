@@ -317,7 +317,7 @@ where
         build_start: Instant,
     ) -> eyre::Result<()> {
         if !block_orders.get_all_orders().is_empty() {
-            println!("[rb] fill_orders: {:?}", block_orders);
+            println!("[rb] fill_orders: {:?}", block_orders.get_all_orders());
         }
         let mut order_attempts: HashMap<OrderId, usize> = HashMap::default();
         // @Perf when gas left is too low we should break.

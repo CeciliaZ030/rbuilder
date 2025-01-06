@@ -87,6 +87,7 @@ where
             );
             orders_for_blocks.insert(*chain_id, orders_for_block);
         }
+        println!("🦤 BlockBuildingPool::start_block_building {:?} orders_for_blocks {:?}", payload.block(), orders_for_blocks.len());
 
         let simulations_for_block = self.order_simulation_pool.spawn_simulation_job(
             block_ctx.clone(),
