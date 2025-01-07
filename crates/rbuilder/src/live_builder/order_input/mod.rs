@@ -38,10 +38,11 @@ pub struct OrderPoolSubscriber {
 impl OrderPoolSubscriber {
     pub fn add_sink(
         &self,
+        chain_id: u64,
         block_number: u64,
         sink: Box<dyn ReplaceableOrderSink>,
     ) -> OrderPoolSubscriptionId {
-        self.orderpool.lock().unwrap().add_sink(block_number, sink)
+        self.orderpool.lock().unwrap().add_sink(chain_id, block_number, sink)
     }
 
     pub fn remove_sink(
@@ -54,12 +55,13 @@ impl OrderPoolSubscriber {
     /// Returned AutoRemovingOrderPoolSubscriptionId will call remove when dropped
     pub fn add_sink_auto_remove(
         &self,
+        chain_id: u64,
         block_number: u64,
         sink: Box<dyn ReplaceableOrderSink>,
     ) -> AutoRemovingOrderPoolSubscriptionId {
         AutoRemovingOrderPoolSubscriptionId {
             orderpool: self.orderpool.clone(),
-            id: self.add_sink(block_number, sink),
+            id: self.add_sink(chain_id, block_number, sink),
         }
     }
 }

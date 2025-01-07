@@ -82,6 +82,7 @@ where
         for (chain_id, orderpool_subscriber) in self.orderpool_subscribers.iter_mut() {
             let (orders_for_block, sink) = OrdersForBlock::new_with_sink();
             let _block_sub = orderpool_subscriber.add_sink(
+                *chain_id,
                 block_ctx.chains[chain_id].block_env.number.to(),
                 Box::new(OrderReplacementManager::new(Box::new(sink))),
             );

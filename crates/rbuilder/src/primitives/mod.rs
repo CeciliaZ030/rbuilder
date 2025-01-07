@@ -629,6 +629,15 @@ pub enum OrderReplacementKey {
 }
 
 impl Order {
+
+    pub fn chain_id(&self) -> Option<u64> {
+        match self {
+            Order::Bundle(bundle) => None, // TODO
+            Order::ShareBundle(bundle) => None,
+            Order::Tx(tx) => tx.tx_with_blobs.tx.chain_id(),
+        }
+    }
+
     /// Partial execution is valid as long as some tx is left.
     pub fn can_execute_with_block_base_fee(&self, block_base_fee: u128) -> bool {
         match self {

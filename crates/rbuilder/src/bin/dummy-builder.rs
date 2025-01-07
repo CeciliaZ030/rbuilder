@@ -21,7 +21,7 @@ use rbuilder::{
         base_config::{
             DEFAULT_EL_NODE_IPC_PATH, DEFAULT_INCOMING_BUNDLES_PORT, DEFAULT_IP,
             DEFAULT_RETH_DB_PATH,
-        }, config::create_provider_factory, gwyneth::GwynethNodes, layer2_info::Layer2Info, order_input::{
+        }, config::create_provider_factory, gwyneth::GwynethNodes, order_input::{
             OrderInputConfig, DEFAULT_INPUT_CHANNEL_BUFFER_SIZE, DEFAULT_RESULTS_CHANNEL_TIMEOUT,
             DEFAULT_SERVE_MAX_CONNECTIONS,
         }, payload_events::{MevBoostSlotData, MevBoostSlotDataGenerator}, simulation::SimulatedOrderCommand, LiveBuilder

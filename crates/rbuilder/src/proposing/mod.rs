@@ -110,7 +110,7 @@ impl BlockProposer {
 
         let receipt = match (&self.l1_client, &self.l1_rpc) {
             (_, Some(url)) => {
-                println!("[rb] BlockProposer using L1 RPC URL: {}", url);
+                println!("[rb] BlockProposer using L1 RPC URL 😈: {}", url);
                 let provider = ProviderBuilder::new().on_http(Url::parse(&url).unwrap());
                 let nonce = provider.get_transaction_count(signer.address()).await
                     .map_err(|e| RelayError::ProposalError(e.to_string()))?;
