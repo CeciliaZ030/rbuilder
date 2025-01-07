@@ -3,7 +3,6 @@ pub mod block_output;
 pub mod building;
 pub mod cli;
 pub mod config;
-pub mod layer2_info;
 pub mod order_input;
 pub mod payload_events;
 pub mod simulation;
@@ -43,8 +42,6 @@ use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
-
-use layer2_info::Layer2Info;
 
 /// Time the proposer have to propose a block from the beginning of the slot (https://www.paradigm.xyz/2023/04/mev-boost-ethereum-consensus Slot anatomy)
 const SLOT_PROPOSAL_DURATION: std::time::Duration = Duration::from_secs(4);
@@ -127,20 +124,20 @@ where
 
         // Cecilia!: call start_orderpool_jobs L1
         let mut orderpool_subscribers = HashMap::default();
-        let orderpool_subscriber = {
-            self.order_input_config.skip = true;
-            let (handle, sub) = start_orderpool_jobs(
-                self.order_input_config,
-                self.provider.clone(),
-                self.l1_ethapi.clone(),
-                self.extra_rpc,
-                self.global_cancellation.clone(),
-            )
-            .await?;
-            inner_jobs_handles.push(handle);
-            sub
-        };
-        orderpool_subscribers.insert(self.chain_chain_spec.chain.id(), orderpool_subscriber);
+        // let orderpool_subscriber = {
+        //     self.order_input_config.skip = true;
+        //     let (handle, sub) = start_orderpool_jobs(
+        //         self.order_input_config,
+        //         self.provider.clone(),
+        //         self.l1_ethapi.clone(),
+        //         self.extra_rpc,
+        //         self.global_cancellation.clone(),
+        //     )
+        //     .await?;
+        //     inner_jobs_handles.push(handle);
+        //     sub
+        // };
+        // orderpool_subscribers.insert(self.chain_chain_spec.chain.id(), orderpool_subscriber);
 
         let mut providers = HashMap::default();
         providers.insert(self.chain_chain_spec.chain.id(), self.provider.clone());
@@ -188,8 +185,7 @@ where
         all_chain_ids.append(&mut providers.keys().cloned().collect::<Vec<_>>());
 
         while let Some(payload) = payload_events_channel.recv().await {
-            println!("[rb] Payload_attributes event received");
-            println!("[rb] Parent block's hash: {:?}", payload.parent_block_hash());
+            println!("[rb] Payload_attributes event received {:?}", payload.parent_block_hash());
 
             if self.blocklist.contains(&payload.fee_recipient()) {
                 warn!(
@@ -323,25 +319,6 @@ where
         Ok(())
     }
 }
-
-// async fn get_layer2_infos(chain_id: U256) -> Result<(), Box<dyn std::error::Error>> {
-    // Let's just pretend this info is already set up somewhere as Layer2Info but for now
-    // i'm just constructing it here.
-    // let urls = vec![
-    //     "http://localhost:10110".to_string(),
-    // ];
-
-    // let (ipc_paths, data_dirs) = self.resolve_l2_paths()?;
-
-    // let layer2_info = Some(Layer2Info::new(ipc_paths, data_dirs).await?);
-
-    // match layer2_info.get_latest_block(chain_id).await? {
-    //     Some(latest_block) => println!("[rb] Latest block: {:?}", latest_block),
-    //     None => println!("[rb] Chain ID not found"),
-    // }
-
-//     Ok(())
-// }
 
 /// May fail if we wait too much (see [BLOCK_HEADER_DEAD_LINE_DELTA])
 async fn wait_for_block_header<P>(

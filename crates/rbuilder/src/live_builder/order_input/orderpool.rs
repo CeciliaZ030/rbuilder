@@ -160,15 +160,12 @@ impl OrderPool {
     fn process_command(&mut self, command: ReplaceableOrderPoolCommand) {
         match &command {
             ReplaceableOrderPoolCommand::Order(order) => {
-                println!("[rb] Dani debug: Processing order: {:?}", order.id());
                 self.process_order(order)
             }
             ReplaceableOrderPoolCommand::CancelShareBundle(c) => {
-                println!("[rb] Dani debug: Processing cancel share bundle: {:?}", c.key);
                 self.process_remove_sbundle(c)
             }
             ReplaceableOrderPoolCommand::CancelBundle(key) => {
-                println!("[rb] Dani debug: Processing cancel bundle: {:?}", key);
                 self.process_remove_bundle(key)
             }
         }
@@ -185,16 +182,13 @@ impl OrderPool {
             if target_block.is_none() || target_block == Some(sub.block_number) {
                 let send_ok = match command.clone() {
                     ReplaceableOrderPoolCommand::Order(o) => {
-                        println!("[rb] Dani debug: Inserting order into sink");
                         sub.sink.insert_order(o)
                     }
                     ReplaceableOrderPoolCommand::CancelShareBundle(cancel) => {
-                        println!("[rb] Dani debug: Removing share bundle from sink");
                         sub.sink
                             .remove_bundle(OrderReplacementKey::ShareBundle(cancel.key))
                     }
                     ReplaceableOrderPoolCommand::CancelBundle(key) => {
-                        println!("[rb] Dani debug: Removing bundle from sink");
                         sub.sink.remove_bundle(OrderReplacementKey::Bundle(key))
                     }
                 };
