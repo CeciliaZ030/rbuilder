@@ -281,7 +281,7 @@ impl BaseConfig {
         P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
         SlotSourceType: SlotSource,
     {
-        println!("[rb] Cecilia ==> BaseConfig::create_in_process_builder");
+        // println!("[rb] Cecilia ==> BaseConfig::create_in_process_builder");
         let RethInput { l1_provider, l2_providers, l1_parents, l1_ethapi, l2_ethapis, l1_client } = reth_input;
         let gwyneth_nodes = GwynethNodes::new(
             self.gwyneth_chain_ids.clone().unwrap(),

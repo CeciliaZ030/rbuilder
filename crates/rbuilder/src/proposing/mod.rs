@@ -118,7 +118,7 @@ impl BlockProposer {
                     .map_err(|e| RelayError::ProposalError(e.to_string()))?;
                 tx.nonce = Some(nonce);
                 tx.chain_id = Some(chain_id);
-                println!("[rb] BlockProposer tx_envelope done - nonce {:?} on {:?}", nonce, chain_id);
+                // println!("[rb] BlockProposer tx_envelope done - nonce {:?} on {:?}", nonce, chain_id);
 
                 let tx_encoded = <TransactionRequest as TransactionBuilder<Ethereum>>::build(tx, &wallet)
                     .await
@@ -129,11 +129,11 @@ impl BlockProposer {
                     .send_raw_transaction(&tx_encoded)
                     .await
                     .map_err(|e| RelayError::ProposalError(e.to_string()))?;
-                println!("[rb] Pending transaction... {}", pending_tx.tx_hash());
+                // println!("[rb] Pending transaction... {}", pending_tx.tx_hash());
                 pending_tx.get_receipt().await.map_err(|e| RelayError::ProposalError(e.to_string()))?
             },
             (Some(client), _) => {
-                println!("[rb] BlockProposer using L1 client {:?}", client);
+                // println!("[rb] BlockProposer using L1 client {:?}", client);
                 let nonce = client.request::<U256, _>(
                         "eth_getTransactionCount", 
                         rpc_params![signer.address().to_string()]
@@ -142,7 +142,7 @@ impl BlockProposer {
                 let chain_id = client.request::<Option<U64>, _>("eth_chainId", rpc_params![])
                     .await
                     .map_err(|e| RelayError::ProposalError(e.to_string()))?;
-                println!("[rb] BlockProposer tx_envelope done - nonce {:?} on {:?}", nonce, chain_id);
+                // println!("[rb] BlockProposer tx_envelope done - nonce {:?} on {:?}", nonce, chain_id);
                 
                 tx.nonce = Some(nonce.try_into().unwrap());
                 tx.chain_id = chain_id.map(|c| c.try_into().unwrap());
@@ -158,7 +158,7 @@ impl BlockProposer {
                     .await
                     .map_err(|e| RelayError::ProposalError(e.to_string()))?
                     .to_string();
-                println!("[rb] BlockProposer eth_sendRawTransaction");
+                // println!("[rb] BlockProposer eth_sendRawTransaction");
                 let mut receipt = None;
                 loop {
                     receipt = client.request::<Option<TransactionReceipt>, _>("eth_getTransactionReceipt", rpc_params!(tx_hash.clone()))
@@ -191,7 +191,7 @@ impl BlockProposer {
             ExecutionPayload::V2(payload) => &payload.payload_inner,
             ExecutionPayload::V3(payload) => &payload.payload_inner.payload_inner,
             _ => {
-                println!("[rb] Unsupported ExecutionPayload version");
+                // println!("[rb] Unsupported ExecutionPayload version");
                 return Err(eyre::eyre!("Unsupported ExecutionPayload version"));
             }
         };

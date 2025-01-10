@@ -25,7 +25,7 @@ pub async fn subscribe_to_mempool_with_blobs(
     results: mpsc::Sender<ReplaceableOrderPoolCommand>,
     global_cancel: CancellationToken,
 ) -> eyre::Result<JoinHandle<()>> {
-    println!("[rb] Cecilia ==>  mempool_fetcher::subscribe_to_mempool_with_blobs");
+    // println!("[rb] Cecilia ==>  mempool_fetcher::subscribe_to_mempool_with_blobs");
     let handle = tokio::spawn(async move {
         info!("Subscribe to txpool with blobs: started");
 
@@ -33,7 +33,7 @@ pub async fn subscribe_to_mempool_with_blobs(
             if config.skip {
                 continue;
             }
-            println!("[rb] txn arrived from EthApi {:?}", tx.transaction.transaction_id);
+            // println!("[rb] txn arrived from EthApi {:?}", tx.transaction.transaction_id);
 
             let start = Instant::now();
             let tx = convert_pooled_transactions(tx.transaction.transaction.clone());

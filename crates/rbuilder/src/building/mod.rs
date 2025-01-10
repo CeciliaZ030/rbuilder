@@ -590,7 +590,7 @@ impl<Tracer: SimulationTracer> PartialBlock<Tracer> {
         ctx: &BlockBuildingContext,
         state: &mut BlockState,
     ) -> Result<Result<ExecutionResult, ExecutionError>, CriticalCommitOrderError> {
-        println!("[rb] commit_order: {:?}", order.order);
+        // println!("[rb] commit_order: {:?}", order.order);
         if ctx.builder_signer.is_none() && !order.sim_value.paid_kickbacks.is_empty() {
             // Return here to avoid wasting time on a call to fork.commit_order that 99% will fail
             return Ok(Err(ExecutionError::OrderError(OrderErr::Bundle(
@@ -638,8 +638,8 @@ impl<Tracer: SimulationTracer> PartialBlock<Tracer> {
         self.executed_tx.extend(ok_result.txs.clone());
         self.receipts.extend(ok_result.receipts.clone());
 
-        //println!("[rb] self.executed_tx num: {:?}", self.executed_tx.len());
-        //println!("[rb] self.executed_tx: {:?}", self.executed_tx);
+        //// println!("[rb] self.executed_tx num: {:?}", self.executed_tx.len());
+        //// println!("[rb] self.executed_tx: {:?}", self.executed_tx);
 
         Ok(Ok(ExecutionResult {
             coinbase_profit: ok_result.coinbase_profit,
@@ -677,12 +677,12 @@ impl<Tracer: SimulationTracer> PartialBlock<Tracer> {
         state: &mut BlockState,
     ) -> Result<(), InsertPayoutTxErr> {
         let target_ctx = &ctx.chains[&ctx.parent_chain_id];
-        //println!("[rb] insert_proposer_payout_tx");
+        //// println!("[rb] insert_proposer_payout_tx");
         let builder_signer = ctx
             .builder_signer
             .as_ref()
             .ok_or(InsertPayoutTxErr::NoSigner)?;
-        //println!("[rb] insert_proposer_payout_tx: builder_signer: {:?}", builder_signer);
+        //// println!("[rb] insert_proposer_payout_tx: builder_signer: {:?}", builder_signer);
         self.free_reserved_gas();
         let nonce = state
             .nonce(builder_signer.address)
@@ -699,7 +699,7 @@ impl<Tracer: SimulationTracer> PartialBlock<Tracer> {
             gas_limit,
             value.to(),
         )?;
-        //println!("[rb] payout tx: {:?}", tx);
+        //// println!("[rb] payout tx: {:?}", tx);
         // payout tx has no blobs so it's safe to unwrap
         let tx = TransactionSignedEcRecoveredWithBlobs::new_no_blobs(tx).unwrap();
         let mut fork = PartialBlockFork::new(state).with_tracer(&mut self.tracer);
@@ -714,8 +714,8 @@ impl<Tracer: SimulationTracer> PartialBlock<Tracer> {
         self.executed_tx.push(ok_result.tx);
         self.receipts.push(ok_result.receipt);
 
-        //println!("[rb] self.executed_tx num: {:?}", self.executed_tx.len());
-        //println!("[rb] self.executed_tx: {:?}", self.executed_tx);
+        //// println!("[rb] self.executed_tx num: {:?}", self.executed_tx.len());
+        //// println!("[rb] self.executed_tx: {:?}", self.executed_tx);
 
         Ok(())
     }
@@ -892,7 +892,7 @@ impl<Tracer: SimulationTracer> PartialBlock<Tracer> {
             requests,
         };
 
-        //println!("[rb] self.executed_tx finalized [{}]: {:?}", self.executed_tx.len(), self.executed_tx);
+        //// println!("[rb] self.executed_tx finalized [{}]: {:?}", self.executed_tx.len(), self.executed_tx);
 
         Ok(FinalizeResult {
             sealed_block: block.seal_slow(),

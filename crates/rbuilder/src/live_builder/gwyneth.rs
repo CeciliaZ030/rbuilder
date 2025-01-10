@@ -74,7 +74,7 @@ where
         ethapis: Vec<Arc<dyn EthApiStream>>,
         server_ports: Vec<u16>,
     ) -> Result<Self> {
-        println!("[rb] Cecilia ==> GwynethNodes::new {:?} {:?} {:?}", providers.len(), ethapis.len(), server_ports);
+        // println!("[rb] Cecilia ==> GwynethNodes::new {:?} {:?} {:?}", providers.len(), ethapis.len(), server_ports);
         let mut nodes = HashMap::default();
         for (((provider, ethapi), port), chain_id) in providers
             .into_iter()
@@ -100,9 +100,9 @@ where
                     ),
                 },
             );
-            println!("[rb] inside the fuckin loop {:?}", port)
+            // println!("[rb] inside the fuckin loop {:?}", port)
         }
-        println!("[rb] WTF how many {:?}", nodes.len());
+        // println!("[rb] WTF how many {:?}", nodes.len());
         Ok(Self {
             l1_parents,
             nodes,
@@ -122,7 +122,7 @@ where
     }
 
     pub async fn sync(&self, chain_id: u64, target_parent: u64, target_parent_hash: B256) -> Result<()> {
-        println!("[rb] BlockBuildingCtx: waiting for node {:?} syncing to target parent {:?}", chain_id, target_parent);
+        // println!("[rb] BlockBuildingCtx: waiting for node {:?} syncing to target parent {:?}", chain_id, target_parent);
         loop {
             let (parent, hash) = self.l1_parents.get(chain_id);
             if parent < target_parent {
@@ -172,14 +172,14 @@ where
 {
 
     fn send_raw_transaction(&self, tx: alloy_primitives::Bytes) ->  Result<B256>{
-        println!("[rb] Cecilia ==> EthTxSender::send_raw_transaction {:?}", tx);
+        // println!("[rb] Cecilia ==> EthTxSender::send_raw_transaction {:?}", tx);
         futures::executor::block_on(self.send_raw_transaction(tx))
             .map_err(|e| eyre::eyre!("Error sending transaction: {:?}", e))
     }
     
 
     fn receipt_by_hash(&self, hash: TxHash) -> Result<(TransactionMeta, Receipt)> {
-        println!("[rb] Cecilia ==> EthTxSender::receipt_by_hash {:?}", hash);
+        // println!("[rb] Cecilia ==> EthTxSender::receipt_by_hash {:?}", hash);
         loop {
             match futures::executor::block_on(self.load_transaction_and_receipt(hash)) {
                 Ok(Some((tx, meta, receipt))) => return Ok((meta, receipt)),

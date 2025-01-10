@@ -191,7 +191,7 @@ impl L1Config {
         assert!(relay_proposer.l1_rollup_contract.is_some(), "L1 rollup contract should be set");    
         // let url = format!("https://{}", SocketAddr::new(l1_node_config.rpc.http_addr, l1_node_config.rpc.http_port).to_string());
         // relay_proposer.l1_rpc_url = Some(url);
-        // println!("[rb] Cecilia ==> L1Config::update_in_process_setting {:?}", self.relays.get_mut(0).unwrap().l1_rpc_url);
+        // // println!("[rb] Cecilia ==> L1Config::update_in_process_setting {:?}", self.relays.get_mut(0).unwrap().l1_rpc_url);
         // relay_proposer.chain_id = Some(l1_node_config.chain.chain.id());
     }
 
@@ -203,7 +203,7 @@ impl L1Config {
         self.cl_node_url
             .iter()
             .map(|url| {
-                println!("[rb] cl_node_url: {:?} {:?}", url, url.value());
+                // println!("[rb] cl_node_url: {:?} {:?}", url, url.value());
                 let url = Url::parse(&url.value()?)?;
                 Ok(Client::new(url))
             })
@@ -213,7 +213,7 @@ impl L1Config {
     pub fn create_relays(&self, l1_client: Option<HttpClient>) -> eyre::Result<Vec<MevBoostRelay>> {
         let mut results = Vec::new();
         for config in &self.relays {
-            println!("[rb] Dani debug - create relays: {:?}", config);
+            // println!("[rb] Dani debug - create relays: {:?}", config);
             // Only the config with l1 proposer infos will have BlockProposer
             let relay = MevBoostRelay::from_config(config, l1_client.clone())?;
             results.push(relay);
@@ -346,7 +346,7 @@ impl LiveBuilderConfig for Config {
         DB: Database + Clone + 'static,
         P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static,
     {
-        println!("[rb] Cecilia ==> LiveBuilderConfig::new_builder");
+        // println!("[rb] Cecilia ==> LiveBuilderConfig::new_builder");
 
         let RethInput { l1_provider, l2_providers, l1_parents, l1_ethapi, l2_ethapis, l1_client } = reth_input.clone();
 

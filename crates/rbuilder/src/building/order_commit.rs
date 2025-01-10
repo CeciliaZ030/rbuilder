@@ -462,7 +462,7 @@ impl<'a, 'b, Tracer: SimulationTracer> PartialBlockFork<'a, 'b, Tracer> {
         let mut env = env.clone();
         env.cfg.chain_id = tx.chain_id().unwrap();
 
-        println!("[rb]  🤖 evm.transact()");
+        // println!("[rb]  🤖 evm.transact()");
         let mut evm = revm::Evm::builder()
             .with_spec_id(ctx.spec_id)
             .with_env(Box::new(env))

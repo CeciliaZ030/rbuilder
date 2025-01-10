@@ -156,7 +156,7 @@ where
     DB: Database + Clone + 'static,
     P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
 {
-    println!("[rb] backtest_simulate_block");
+    // println!("[rb] backtest_simulate_block");
 
     let chain_id = input.ctx.parent_chain_id;
 
@@ -321,7 +321,7 @@ where
         build_start: Instant,
     ) -> eyre::Result<()> {
         if !block_orders.get_all_orders().is_empty() {
-            println!("[rb] fill_orders: {:?}", block_orders.get_all_orders().len());
+            // println!("[rb] fill_orders: {:?}", block_orders.get_all_orders().len());
         }
         let mut order_attempts: HashMap<OrderId, usize> = HashMap::default();
         // @Perf when gas left is too low we should break.

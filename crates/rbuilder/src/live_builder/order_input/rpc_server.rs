@@ -30,7 +30,7 @@ pub async fn start_server_accepting_bundles(
     global_cancel: CancellationToken,
 ) -> eyre::Result<JoinHandle<()>> {
     let addr = SocketAddr::V4(SocketAddrV4::new(config.server_ip, config.server_port));
-    println!("[rb] Cecilia ==> start_server_accepting_bundles {:?}", addr);
+    // println!("[rb] Cecilia ==> start_server_accepting_bundles {:?}", addr);
     let timeout = config.results_channel_timeout;
 
     let server = Server::builder()

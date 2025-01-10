@@ -113,7 +113,7 @@ impl OrderPool {
 
         let (order, target_block) = match &order {
             Order::Tx(..) => {
-                println!("[rb] OrderPool::process_order: {:?}", order);
+                // println!("[rb] OrderPool::process_order: {:?}", order);
                 self.mempool_txs.push((order.clone(), Instant::now()));
                 (order, None)
             }
@@ -186,7 +186,7 @@ impl OrderPool {
                     }
                 };
                 if !send_ok {
-                    println!("[rb] Dani debug: Failed to send to sink, removing sink");
+                    // println!("[rb] Dani debug: Failed to send to sink, removing sink");
                     return false;
                 }
             }
@@ -207,14 +207,14 @@ impl OrderPool {
         mut sink: Box<dyn ReplaceableOrderSink>,
     ) -> OrderPoolSubscriptionId {
         // for order in self.mempool_txs.iter().map(|(order, _)| order.clone()) {
-        //     println!("[rb] OrderPool::add_sink adding mempool order {:?}", order);
+        //     // println!("[rb] OrderPool::add_sink adding mempool order {:?}", order);
         //     sink.insert_order(order);
         // }
         // We let the order go down the sink to prevent repeated proposals
         self.mempool_txs.retain(|(order, _)| {
             if let Some(chain_id) = order.chain_id() {
                 if chain_id == sink_chain_id {
-                    println!("[rb] OrderPool::add_sink adding mempool order {:?} for chain {:?}", order, chain_id);
+                    // println!("[rb] OrderPool::add_sink adding mempool order {:?} for chain {:?}", order, chain_id);
                     sink.insert_order(order.clone());
                     return false;
                 }
@@ -237,7 +237,7 @@ impl OrderPool {
         self.next_sink_id += 1;
         self.sinks
             .insert(res.clone(), SinkSubscription { sink, block_number });
-        println!("🦤 OrderPool::add_sink {:?} for block {:?} added {} mempool_txs", res, block_number, self.mempool_txs.len());
+        // println!("🦤 OrderPool::add_sink {:?} for block {:?} added {} mempool_txs", res, block_number, self.mempool_txs.len());
         res
     }
 

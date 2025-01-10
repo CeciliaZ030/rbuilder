@@ -56,7 +56,7 @@ fn main() -> eyre::Result<()> {
                     .with_components(EthereumNode::components())
                     .with_add_ons::<EthereumAddOns>()
                     .on_rpc_started(move |ctx, handles| {
-                        println!("[rb] Cecilia ==> on_rpc_started");
+                        // println!("[rb] Cecilia ==> on_rpc_started");
                         let reth_input = RethInput {
                             l1_provider: ctx.provider().clone(),
                             l2_providers: l2_providers.clone(),
@@ -151,7 +151,7 @@ where
             config.l1_config.update_in_process_setting(&l1_node_config);
             config.base_config.update_in_process_setting(arg);
 
-            println!("[rb] Cecilia ==> spawn_rbuilder {:?}", config);
+            // println!("[rb] Cecilia ==> spawn_rbuilder {:?}", config);
 
             // Spawn redacted server that is safe for tdx builders to expose
             telemetry::servers::redacted::spawn(

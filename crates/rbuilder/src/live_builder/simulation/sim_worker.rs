@@ -30,7 +30,7 @@ pub fn run_sim_worker<P>(
 ) where
     P: StateProviderFactory,
 {
-    println!("[rb] run_sim_worker 🛼");
+    // println!("[rb] run_sim_worker 🛼");
     loop {
         if global_cancellation.is_cancelled() {
             return;
@@ -86,7 +86,7 @@ pub fn run_sim_worker<P>(
                 Ok(sim_result) => {
                     let sim_ok = match &sim_result.result {
                         OrderSimResult::Success(simulated_order, nonces_after) => {
-                            println!("[rb] sim okay for: {:?} -> {:?}", task.id, sim_result.gas_used);
+                            // println!("[rb] sim okay for: {:?} -> {:?}", task.id, sim_result.gas_used);
                             let result = SimulatedResult {
                                 id: task.id,
                                 simulated_order: simulated_order.clone(),
@@ -104,7 +104,7 @@ pub fn run_sim_worker<P>(
                                 simulation_time: start_time.elapsed(),
                             };
                             let result_send = current_sim_context.results.try_send(result);
-                            println!("[rb] sending sim result: {:?}", result_send);
+                            // println!("[rb] sending sim result: {:?}", result_send);
                             true
                         }
                         OrderSimResult::Failed(_) => false,

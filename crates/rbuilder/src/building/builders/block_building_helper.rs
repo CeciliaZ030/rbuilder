@@ -189,7 +189,7 @@ where
                 origin_chain_id = *chain_id;
             }
         }
-        //println!("[rb] origin_chain_id: {}", origin_chain_id);
+        //// println!("[rb] origin_chain_id: {}", origin_chain_id);
 
         let fee_recipient_balance_start = state_providers
             [&building_ctx.chains[&origin_chain_id].chain_spec.chain.id()]
@@ -288,7 +288,7 @@ where
         // let (bid_value, true_value) = if let (Some(payout_tx_gas), Some(payout_tx_value)) =
         //     (self.payout_tx_gas, payout_tx_value)
         // {
-        //     //println!("[rb] insert_proposer_payout_tx");
+        //     //// println!("[rb] insert_proposer_payout_tx");
         //     match self.partial_block.insert_proposer_payout_tx(
         //         payout_tx_gas,
         //         payout_tx_value,
@@ -308,7 +308,7 @@ where
         let true_value = U256::from(self.partial_block.gas_used);
 
         if self.partial_block.gas_used > 0 {
-            println!("[rb] gas used: {:?}", self.partial_block.gas_used);
+            // println!("[rb] gas used: {:?}", self.partial_block.gas_used);
         }
         // Since some extra money might arrived directly the suggested_fee_recipient (when suggested_fee_recipient != coinbase)
         // we check the fee_recipient delta and make our bid include that! This is supposed to be what the relay will check.
@@ -387,7 +387,7 @@ where
         mut self: Box<Self>,
         payout_tx_value: Option<U256>,
     ) -> Result<FinalizeBlockResult, BlockBuildingHelperError> {
-        //println!("[rb] finalize_block");
+        //// println!("[rb] finalize_block");
         if payout_tx_value.is_some()
             && self.building_ctx.chains[&self.origin_chain_id].coinbase_is_suggested_fee_recipient()
         {
@@ -466,7 +466,7 @@ where
         //         continue;
         //     }
 
-        //     //println!("[rb] Creating block for chain {}", chain_id);
+        //     //// println!("[rb] Creating block for chain {}", chain_id);
 
         //     let block_number = self.building_context().block();
         //     let finalized_block = match self.partial_block.clone().finalize(

@@ -205,7 +205,7 @@ pub async fn start_orderpool_jobs<P>(
 where
     P: StateProviderFactory + 'static,
 {
-    println!("[rb] Cecilia ==> start_orderpool_jobs");
+    // println!("[rb] Cecilia ==> start_orderpool_jobs");
     if config.ignore_cancellable_orders {
         warn!("ignore_cancellable_orders is set to true, some order input is ignored");
     }

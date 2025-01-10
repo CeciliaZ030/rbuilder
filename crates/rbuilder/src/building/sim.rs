@@ -160,12 +160,12 @@ where
             match onchain_nonce.cmp(&nonce.nonce) {
                 Ordering::Equal => {
                     // nonce, valid
-                    println!("[rb] nonce ok");
+                    // println!("[rb] nonce ok");
                     onchain_nonces_incremented.insert(nonce.address);
                     continue;
                 }
                 Ordering::Greater => {
-                    // println!("[rb] nonce invalid");
+                    // // println!("[rb] nonce invalid");
                     // nonce invalid, maybe its optional
                     if !nonce.optional {
                         // this order will never be valid
@@ -181,7 +181,7 @@ where
                     }
                 }
                 Ordering::Less => {
-                    // println!("[rb] nonce invalid");
+                    // // println!("[rb] nonce invalid");
                     if onchain_nonces_incremented.contains(&nonce.address) {
                         // we already considered this account nonce
                         continue;
@@ -324,7 +324,7 @@ pub fn simulate_all_orders_with_sim_tree<P>(
 where
     P: StateProviderFactory + Clone + 'static,
 {
-    println!("[rb] simulate_all_orders_with_sim_tree");
+    // println!("[rb] simulate_all_orders_with_sim_tree");
     let parent_block_hashes = ctx
         .chains
         .iter()

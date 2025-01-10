@@ -106,7 +106,7 @@ where
     }
 
     pub async fn run(mut self) -> eyre::Result<()> {
-        println!("[rb] Cecilia ==> LiveBuilder::run");
+        // println!("[rb] Cecilia ==> LiveBuilder::run");
         info!("Builder block list size: {}", self.blocklist.len(),);
         info!(
             "Builder coinbase address: {:?}",
@@ -143,7 +143,7 @@ where
         providers.insert(self.chain_chain_spec.chain.id(), self.provider.clone());
 
         // Cecilia!: call start_orderpool_jobs L2
-        println!("[rb] WTF how many nodes are there? {:?}", self.gwyneth_nodes.nodes.len());
+        // println!("[rb] WTF how many nodes are there? {:?}", self.gwyneth_nodes.nodes.len());
         for (chain_id, node) in self.gwyneth_nodes.nodes.iter() {
             let orderpool_subscriber = {
                 let (handle, sub) = start_orderpool_jobs(
@@ -191,7 +191,7 @@ where
                     continue;
                 }
             } else {
-                println!("[rb] Payload_attributes event received {:?}", payload.parent_block_hash());
+                // println!("[rb] Payload_attributes event received {:?}", payload.parent_block_hash());
                 last_payload = Some(payload.clone());
             }
 
@@ -284,7 +284,7 @@ where
                     block_ctx.attributes.parent = latest_header.hash();
                     block_ctx.block_env.number = U256::from(latest_header.number + 1);
                 } else {
-                    println!("[rb] failed to get latest block for {}", chain_id);
+                    // println!("[rb] failed to get latest block for {}", chain_id);
                 }
                 // TODO(Cecilia): should read ChainSpecs for different chains, not just changing the chain_id
                 let mut chain_spec = (*block_ctx.chain_spec).clone();;
@@ -304,7 +304,7 @@ where
                 Some(self.coinbase_signer.clone()),
             );
 
-            println!("[rb] Start building");
+            // println!("[rb] Start building");
             builder_pool.start_block_building(
                 payload,
                 super_block_ctx,

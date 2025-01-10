@@ -137,7 +137,7 @@ struct TracingBlockSink {}
 
 impl UnfinishedBlockBuildingSink for TracingBlockSink {
     fn new_block(&self, block: Box<dyn BlockBuildingHelper>) {
-        println!("[rb] UnfinishedBlockBuildingSink::new_block");
+        // println!("[rb] UnfinishedBlockBuildingSink::new_block");
         info!(
             order_count =? block.built_block_trace().included_orders.len(),
             "Block generated. Throwing it away!"

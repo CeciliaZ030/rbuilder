@@ -79,7 +79,7 @@ where
         Cli::Run(cli) => cli,
         Cli::Config(cli) => {
             let config: ConfigType = load_config_toml_and_env(cli.config)?;
-            println!("[rb] {:#?}", config);
+            // println!("[rb] {:#?}", config);
             return Ok(());
         }
         Cli::Version => {
@@ -90,7 +90,7 @@ where
 
     let config: ConfigType = load_config_toml_and_env(cli.config)?;
     config.base_config().setup_tracing_subscriber()?;
-    println!("[rb] config from toml: {:?}", config);
+    // println!("[rb] config from toml: {:?}", config);
 
     let cancel = CancellationToken::new();
 
