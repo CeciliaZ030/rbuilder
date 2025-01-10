@@ -205,11 +205,7 @@ impl BlockProposer {
         transactions.encode(&mut tx_list);
         let tx_list_hash = B256::from(alloy_primitives::keccak256(&tx_list));
 
-        println!("[rb] proposing for block: {}", execution_payload.block_number);
-        println!(
-            "number of transactions: {}",
-            execution_payload.transactions.len()
-        );
+        println!("[rb] proposing for block: {} with {} tx", execution_payload.block_number, execution_payload.transactions.len());
 
         let meta = BlockMetadata {
             blockHash: execution_payload.block_hash,
@@ -229,8 +225,6 @@ impl BlockProposer {
             blobUsed: false,
             txList: tx_list.into(),
         };
-
-        // println!("[rb] meta: {:?}", meta);
 
         Ok((meta, execution_payload.transactions.len()))
     }

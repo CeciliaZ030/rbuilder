@@ -113,7 +113,7 @@ where
         let current_contexts = Arc::clone(&self.current_contexts);
         let block_context: BlockContextId = gen_uid();
         // let span = info_span!("sim_ctx", block = ctx.block_env.number.to::<u64>(), parent = ?ctx.attributes.parent);
-        println!("🦤 OrderSimulationPool::spawn_simulation_job input {:?}", input);
+        println!("[rb] OrderSimulationPool::spawn_simulation_job input 🦤 {:?}", input);
 
         let handle = tokio::spawn(async move {
             for (_chain_id, new_order_sub) in input {

@@ -135,12 +135,12 @@ where
         // submit sim tasks loop
         loop {
             let mut new_sim_request = self.sim_tree.pop_simulation_tasks(1024);
+            println!("[rb] SimulationJob::send_new_tasks_for_simulation 🛼 {:?}", new_sim_request);
             if new_sim_request.is_empty() {
                 break;
             }
             // filter out cancelled orders
             new_sim_request.retain(|s| self.order_still_valid(&s.order.id()));
-
             for sim_request in new_sim_request {
                 let order_id = sim_request.order.id();
                 let delivered = match self.sim_req_sender.try_send(sim_request) {
@@ -151,6 +151,7 @@ where
                         // @Metric
                     }
                     Err(flume::TrySendError::Disconnected(_)) => {
+                        println!("sin req channel disconnected");
                         error!("Sim channel is closed, dropping order");
                         false
                         // @Metric
@@ -171,6 +172,7 @@ where
         &mut self,
         new_sim_results: &mut Vec<SimulatedResult>,
     ) -> bool {
+        println!("[rb] send {:?} sim_results as sim_orders", new_sim_results.len());
         // send results
         let mut valid_simulated_orders = Vec::new();
         for sim_result in new_sim_results {
@@ -198,6 +200,7 @@ where
                         .await
                         .is_err()
                 {
+                    println!("[rb] recv for SimulatedOrderCommand::Simulation closed");
                     return false; //receiver closed :(
                 }
             }
@@ -240,6 +243,7 @@ where
     fn process_new_order(&mut self, order: Order) -> bool {
         self.orders_received.accumulate(&order);
         let order_id = order.id();
+        // println!("[rb] SimulationJob::process_new_order {:?}", order_id);
         if let Err(err) = self.sim_tree.push_orders(vec![order]) {
             error!(?err, "Failed to push order into the sim tree");
             // @Metric

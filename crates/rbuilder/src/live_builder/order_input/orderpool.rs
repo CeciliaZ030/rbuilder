@@ -96,12 +96,7 @@ impl OrderPool {
     }
 
     pub fn process_commands(&mut self, commands: Vec<ReplaceableOrderPoolCommand>) {
-        println!(
-            "Dani debug: OrderPool received {} commands to process",
-            commands.len()
-        );
         commands.into_iter().for_each(|oc| self.process_command(oc));
-        println!("[rb] Dani debug: OrderPool finished processing commands");
     }
 
     fn process_order(&mut self, order: &Order) {
@@ -118,7 +113,7 @@ impl OrderPool {
 
         let (order, target_block) = match &order {
             Order::Tx(..) => {
-                println!("[rb] Added to mempool: {:?}", order);
+                println!("[rb] OrderPool::process_order: {:?}", order);
                 self.mempool_txs.push((order.clone(), Instant::now()));
                 (order, None)
             }
@@ -171,12 +166,10 @@ impl OrderPool {
         }
 
         let target_block = command.target_block();
-        println!("[rb] Dani debug: Command target block: {:?}", target_block);
 
         let initial_sink_count = self.sinks.len();
         self.sinks.retain(|_, sub| {
             if !sub.sink.is_alive() {
-                println!("[rb] Dani debug: Removing dead sink");
                 return false;
             }
             if target_block.is_none() || target_block == Some(sub.block_number) {
@@ -201,7 +194,7 @@ impl OrderPool {
         });
         let final_sink_count = self.sinks.len();
         println!(
-            "Dani debug: Sink count changed from {} to {}",
+            "[rb] OrderPool: sink count renived 🗳️ from {} to {}",
             initial_sink_count, final_sink_count
         );
     }

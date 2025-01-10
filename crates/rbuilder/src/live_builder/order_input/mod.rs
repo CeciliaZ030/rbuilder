@@ -303,12 +303,7 @@ where
 
             {
                 let mut orderpool = orderpool.lock().unwrap();
-                println!(
-                    "Dani debug: Processing {} commands in OrderPool",
-                    new_commands.len()
-                );
                 orderpool.process_commands(new_commands.clone());
-                println!("[rb] Dani debug: Finished processing commands in OrderPool");
             }
             new_commands.clear();
         }

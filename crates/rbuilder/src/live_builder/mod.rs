@@ -238,7 +238,6 @@ where
 
             inc_active_slots();
 
-            println!("[rb] Dani debug: build block context");
             let mut all_block_ctxs = HashMap::default();
             let l1_block_ctx = ChainBlockBuildingContext::from_attributes(
                 payload.payload_attributes_event.clone(),
@@ -263,7 +262,6 @@ where
                 // The first idx is L1, the rests should be in-order
                 self.gwyneth_nodes.sync(chain_id, parent_header.number, payload.parent_block_hash()).await?;
 
-                println!("[rb] setting up {}", chain_id);
                 let mut block_ctx = l1_block_ctx.clone();
                 // This shoud be build upon the parent L1 block
                 // query the synced L1 block inside this L2 node and see if they match
@@ -285,7 +283,7 @@ where
                 block_ctx.chain_spec = chain_spec.into();
                 
                 println!(
-                    "Latest block hash for {} is {}",
+                    "[rb] latest block hash for {} is {}",
                     chain_id, block_ctx.attributes.parent
                 );
                 all_block_ctxs.insert(chain_id, block_ctx);

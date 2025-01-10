@@ -120,8 +120,6 @@ impl MevBoostRelay {
     // Brecht: Can make a proposeBlock call here to L1 with the given block
     // Can implement a custom "relay" for gwyneth that has this behaviour
     pub async fn submit_block(&self, data: &SubmitBlockRequest) -> Result<(), SubmitBlockErr> {
-        println!("[rb] Brecht: L1 propose!");
-
         // Handle the Option<BlockProposer>
         if let Some(proposer) = &self.block_proposer {
             // Call propose_block on the BlockProposer with the SubmitBlockRequest

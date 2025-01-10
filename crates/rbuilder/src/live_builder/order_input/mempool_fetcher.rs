@@ -33,7 +33,7 @@ pub async fn subscribe_to_mempool_with_blobs(
             if config.skip {
                 continue;
             }
-            println!("[rb] Cecilia debug: Some txn arrived on {:?}", tx);
+            println!("[rb] txn arrived from EthApi {:?}", tx.transaction.transaction_id);
 
             let start = Instant::now();
             let tx = convert_pooled_transactions(tx.transaction.transaction.clone());
@@ -45,10 +45,6 @@ pub async fn subscribe_to_mempool_with_blobs(
             trace!(order = ?order.id(), parse_duration_mus = parse_duration.as_micros(), "Mempool transaction received with blobs");
 
             add_txfetcher_time_to_query(parse_duration);
-            println!(
-                "Dani debug: About to send order to results channel. Order ID: {:?}",
-                order_id
-            );
             match results
                 .send_timeout(
                     ReplaceableOrderPoolCommand::Order(order),
@@ -64,10 +60,6 @@ pub async fn subscribe_to_mempool_with_blobs(
                     break;
                 }
             }
-            println!(
-                "Dani debug: Successfully sent order to results channel. Order ID: {:?}",
-                order_id
-            );
         }
 
         // stream is closed, cancelling token because builder can't work without this stream

@@ -185,9 +185,6 @@ async fn run_submit_to_relays_job(
         } else {
             continue 'submit;
         };
-
-        println!("[rb] submit block!");
-
         res = Some(BuiltBlockInfo {
             bid_value: block.trace.bid_value,
             true_bid_value: block.trace.true_bid_value,
@@ -446,7 +443,6 @@ async fn submit_bid_to_the_relay(
     signed_submit_request: SubmitBlockRequest,
     optimistic: bool,
 ) {
-    println!("[rb] submit_bid_to_the_relay");
     let submit_start = Instant::now();
 
     if let Some(limiter) = &relay.submission_rate_limiter {

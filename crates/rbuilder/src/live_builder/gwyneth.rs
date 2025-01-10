@@ -110,7 +110,6 @@ where
     }
 
     pub async fn get_latest_header(&self, chain_id: u64) -> Result<Option<SealedHeader>> {
-        println!("[rb] Cecilia ==> GwynethNodes::get_latest_header {:?}", chain_id);
         if let Some(provider) = self.nodes.get(&chain_id).map(|n| n.provider.clone()) {
             let number = provider.last_block_number()?;
             provider
@@ -123,7 +122,7 @@ where
     }
 
     pub async fn sync(&self, chain_id: u64, target_parent: u64, target_parent_hash: B256) -> Result<()> {
-        println!("[rb] waiting for node {:?} syncing to target parent {:?}", chain_id, target_parent);
+        println!("[rb] BlockBuildingCtx: waiting for node {:?} syncing to target parent {:?}", chain_id, target_parent);
         loop {
             let (parent, hash) = self.l1_parents.get(chain_id);
             if parent < target_parent {
