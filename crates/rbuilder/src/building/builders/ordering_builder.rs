@@ -119,6 +119,9 @@ where
         }
 
         let orders = order_intake_consumer.current_block_orders();
+        if orders.get_all_orders().is_empty() {
+            continue;
+        }
         println!("[rb] builder.build_block 🤖 SimulatedOrders: {:?}", orders.get_all_orders().len());
         match builder.build_block(
             orders,

@@ -590,6 +590,7 @@ impl<Tracer: SimulationTracer> PartialBlock<Tracer> {
         ctx: &BlockBuildingContext,
         state: &mut BlockState,
     ) -> Result<Result<ExecutionResult, ExecutionError>, CriticalCommitOrderError> {
+        println!("[rb] commit_order: {:?}", order.order);
         if ctx.builder_signer.is_none() && !order.sim_value.paid_kickbacks.is_empty() {
             // Return here to avoid wasting time on a call to fork.commit_order that 99% will fail
             return Ok(Err(ExecutionError::OrderError(OrderErr::Bundle(
