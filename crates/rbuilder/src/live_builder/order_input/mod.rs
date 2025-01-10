@@ -266,7 +266,6 @@ where
                     if n == 0 {
                         break;
                     }
-                    println!("[rb] Dani debug: Received {} new commands", n);
                 },
             };
 

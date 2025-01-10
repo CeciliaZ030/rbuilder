@@ -135,10 +135,11 @@ where
         // submit sim tasks loop
         loop {
             let mut new_sim_request = self.sim_tree.pop_simulation_tasks(1024);
-            println!("[rb] SimulationJob::send_new_tasks_for_simulation 🛼 {:?}", new_sim_request);
             if new_sim_request.is_empty() {
                 break;
             }
+            println!("[rb] SimulationJob::send_new_tasks_for_simulation 🛼 {:?}", new_sim_request);
+
             // filter out cancelled orders
             new_sim_request.retain(|s| self.order_still_valid(&s.order.id()));
             for sim_request in new_sim_request {

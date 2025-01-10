@@ -184,8 +184,17 @@ where
         let mut all_chain_ids = vec![self.chain_chain_spec.chain.id()];
         all_chain_ids.append(&mut providers.keys().cloned().collect::<Vec<_>>());
 
+        let mut last_payload: Option<MevBoostSlotData> = None;
         while let Some(payload) = payload_events_channel.recv().await {
-            println!("[rb] Payload_attributes event received {:?}", payload.parent_block_hash());
+            if let Some(last_payload) = &last_payload {
+                if last_payload.slot() == payload.slot() {
+                    continue;
+                }
+            } else {
+                println!("[rb] Payload_attributes event received {:?}", payload.parent_block_hash());
+                last_payload = Some(payload.clone());
+            }
+
 
             if self.blocklist.contains(&payload.fee_recipient()) {
                 warn!(

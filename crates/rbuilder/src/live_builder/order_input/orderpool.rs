@@ -202,7 +202,7 @@ impl OrderPool {
     /// Adds a sink and pushes the current state for the block
     pub fn add_sink(
         &mut self,
-        chain_id: u64,
+        sink_chain_id: u64,
         block_number: u64,
         mut sink: Box<dyn ReplaceableOrderSink>,
     ) -> OrderPoolSubscriptionId {
@@ -212,9 +212,9 @@ impl OrderPool {
         // }
         // We let the order go down the sink to prevent repeated proposals
         self.mempool_txs.retain(|(order, _)| {
-            println!("[rb] OrderPool::add_sink adding mempool order {:?} for chain {:?}", order, chain_id);
             if let Some(chain_id) = order.chain_id() {
-                if chain_id == chain_id {
+                if chain_id == sink_chain_id {
+                    println!("[rb] OrderPool::add_sink adding mempool order {:?} for chain {:?}", order, chain_id);
                     sink.insert_order(order.clone());
                     return false;
                 }

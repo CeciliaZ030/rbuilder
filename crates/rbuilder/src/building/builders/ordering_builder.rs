@@ -119,6 +119,7 @@ where
         }
 
         let orders = order_intake_consumer.current_block_orders();
+        println!("[rb] builder.build_block 🤖 SimulatedOrders: {:?}", orders.get_all_orders().len());
         match builder.build_block(
             orders,
             use_suggested_fee_recipient_as_coinbase
