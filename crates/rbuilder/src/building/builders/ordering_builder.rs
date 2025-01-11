@@ -122,7 +122,8 @@ where
         if orders.get_all_orders().is_empty() {
             continue;
         }
-        println!("[rb] builder.build_block 🤖 SimulatedOrders: {:?}", orders.get_all_orders().len());
+        println!("[rb] builder.consume_next_batch of SimulatedOrders 🤖 {:?}", orders.get_all_orders().len());
+
         match builder.build_block(
             orders,
             use_suggested_fee_recipient_as_coinbase

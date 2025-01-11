@@ -88,8 +88,7 @@ impl BlockProposer {
         }.abi_encode();
 
         let decoded_transactions: Vec<TransactionSigned> = decode_transactions(&meta.txList);
-        println!("[rb] Propose block decoded_transactions: {:?}", decoded_transactions);
-
+        println!("[rb] Propose block decoded_transactions: {:?}", decoded_transactions.len());
 
         // Create a signer from a random private key.
         let signer = PrivateKeySigner::from_str(&self.private_key).unwrap();

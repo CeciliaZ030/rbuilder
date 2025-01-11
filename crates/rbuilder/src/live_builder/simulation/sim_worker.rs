@@ -30,7 +30,6 @@ pub fn run_sim_worker<P>(
 ) where
     P: StateProviderFactory,
 {
-    // println!("[rb] run_sim_worker 🛼");
     loop {
         if global_cancellation.is_cancelled() {
             return;

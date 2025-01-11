@@ -191,7 +191,7 @@ where
                     continue;
                 }
             } else {
-                // println!("[rb] Payload_attributes event received {:?}", payload.parent_block_hash());
+                println!("[rb] Payload_attributes event received {:?}", payload.parent_block_hash());
                 last_payload = Some(payload.clone());
             }
 

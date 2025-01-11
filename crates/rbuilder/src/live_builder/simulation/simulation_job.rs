@@ -85,11 +85,11 @@ where
     pub async fn run(&mut self) {
         debug!("Starting simulation job for parent block");
         self.run_no_trace().await;
-        info!(
-            ?self.orders_received,
-            ?self.orders_simulated_ok,
-            "Stopping simulation job "
-        );
+        // info!(
+        //     ?self.orders_received,
+        //     ?self.orders_simulated_ok,
+        //     "Stopping simulation job "
+        // );
     }
     async fn run_no_trace(&mut self) {
         let mut new_commands = Vec::new();
@@ -112,6 +112,7 @@ where
                 }
                 n = self.sim_results_receiver.recv_many(&mut new_sim_results, 1024) => {
                     if n != 0 {
+                        println!("[rb] SimulationJob 🛼 got {:?} sim_results", new_sim_results.len());
                         if !self.process_new_simulations(&mut new_sim_results).await {
                             return;
                         }
@@ -179,8 +180,7 @@ where
         for sim_result in new_sim_results {
             trace!(order_id=?sim_result.simulated_order.order.id(),
             sim_duration_mus = sim_result.simulation_time.as_micros(),
-            profit = format_ether(sim_result.simulated_order.sim_value.coinbase_profit),
-            "Order simulated");
+            profit = format_ether(sim_result.simulated_order.sim_value.coinbase_profit), "Order simulated");
             self.orders_simulated_ok
                 .accumulate(&sim_result.simulated_order.order);
             // Skip cancelled orders and remove from in_flight_orders
@@ -201,7 +201,7 @@ where
                         .await
                         .is_err()
                 {
-                    // println!("[rb] recv for SimulatedOrderCommand::Simulation closed");
+                    println!("[rb] recv for SimulatedOrderCommand::Simulation closed");
                     return false; //receiver closed :(
                 }
             }
