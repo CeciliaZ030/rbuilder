@@ -206,11 +206,8 @@ impl OrderPool {
         block_number: u64,
         mut sink: Box<dyn ReplaceableOrderSink>,
     ) -> OrderPoolSubscriptionId {
-        // for order in self.mempool_txs.iter().map(|(order, _)| order.clone()) {
-        //     // println!("[rb] OrderPool::add_sink adding mempool order {:?}", order);
-        //     sink.insert_order(order);
-        // }
         // We let the order go down the sink to prevent repeated proposals
+        // Only the order of matching chain_id is sent to the chain's sink
         self.mempool_txs.retain(|(order, _)| {
             if let Some(chain_id) = order.chain_id() {
                 if chain_id == sink_chain_id {

@@ -85,11 +85,11 @@ where
     pub async fn run(&mut self) {
         debug!("Starting simulation job for parent block");
         self.run_no_trace().await;
-        // info!(
-        //     ?self.orders_received,
-        //     ?self.orders_simulated_ok,
-        //     "Stopping simulation job "
-        // );
+        info!(
+            ?self.orders_received,
+            ?self.orders_simulated_ok,
+            "Stopping simulation job "
+        );
     }
     async fn run_no_trace(&mut self) {
         let mut new_commands = Vec::new();
