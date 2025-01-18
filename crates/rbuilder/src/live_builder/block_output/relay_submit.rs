@@ -288,7 +288,7 @@ async fn run_submit_to_relays_job(
             let submission = normal_signed_submission.clone();
             tokio::spawn(
                 async move {
-                    submit_bid_to_the_relay(&relay, cancel.clone(), submission, false).await;
+                    submit_bid_to_the_relay(relay, cancel.clone(), submission, false).await;
                 }
                 .instrument(span),
             );
@@ -318,7 +318,7 @@ async fn run_submit_to_relays_job(
                     let submission = optimistic_signed_submission.clone();
                     tokio::spawn(
                         async move {
-                            submit_bid_to_the_relay(&relay, cancel.clone(), submission, true).await;
+                            submit_bid_to_the_relay(relay, cancel.clone(), submission, true).await;
                         }
                         .instrument(span),
                     );
@@ -333,7 +333,7 @@ async fn run_submit_to_relays_job(
                 let submission = normal_signed_submission.clone();
                 tokio::spawn(
                     async move {
-                        submit_bid_to_the_relay(&relay, cancel.clone(), submission, false).await;
+                        submit_bid_to_the_relay(relay, cancel.clone(), submission, false).await;
                     }
                     .instrument(span),
                 );
@@ -438,7 +438,7 @@ async fn validate_block(
 }
 
 async fn submit_bid_to_the_relay(
-    relay: &MevBoostRelay,
+    mut relay: MevBoostRelay,
     cancel: CancellationToken,
     signed_submit_request: SubmitBlockRequest,
     optimistic: bool,

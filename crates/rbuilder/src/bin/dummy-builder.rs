@@ -58,7 +58,7 @@ async fn main() -> eyre::Result<()> {
         with_url("https://0xac6e77dfe25ecd6110b8e780608cce0dab71fdd5ebea22a16c0205200f2f8e2e3ad3b71d3499c54ad14d6c21b41a37ae@boost-relay.flashbots.net").
         with_name("flashbots");
 
-    let relay = MevBoostRelay::from_config(&relay_config, None)?;
+    let relay = MevBoostRelay::from_config(&relay_config, None, None)?;
 
     let payload_event = MevBoostSlotDataGenerator::new(
         vec![Client::default()],

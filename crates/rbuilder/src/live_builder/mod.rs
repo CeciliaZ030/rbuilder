@@ -287,7 +287,7 @@ where
                     // println!("[rb] failed to get latest block for {}", chain_id);
                 }
                 // TODO(Cecilia): should read ChainSpecs for different chains, not just changing the chain_id
-                let mut chain_spec = (*block_ctx.chain_spec).clone();;
+                let mut chain_spec = (*block_ctx.chain_spec).clone();
                 chain_spec.chain = Chain::from(chain_id);
                 block_ctx.chain_spec = chain_spec.into();
                 

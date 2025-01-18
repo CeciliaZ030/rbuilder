@@ -206,17 +206,27 @@ impl OrderPool {
         block_number: u64,
         mut sink: Box<dyn ReplaceableOrderSink>,
     ) -> OrderPoolSubscriptionId {
+        // TODO: drain or not drain?
         // We let the order go down the sink to prevent repeated proposals
         // Only the order of matching chain_id is sent to the chain's sink
-        self.mempool_txs.retain(|(order, _)| {
+        // self.mempool_txs.retain(|(order, _)| {
+        //     if let Some(chain_id) = order.chain_id() {
+        //         if chain_id == sink_chain_id {
+        //             // println!("[rb] OrderPool::add_sink adding mempool order {:?} for chain {:?}", order, chain_id);
+        //             sink.insert_order(order.clone());
+        //             return false;
+        //         }
+        //     }
+        //     true
+        // });
+        // drainning may lost orders when sinks are removed, not drainning will cause building repetition
+        self.mempool_txs.iter().for_each(|(order, _)| {
             if let Some(chain_id) = order.chain_id() {
                 if chain_id == sink_chain_id {
-                    // println!("[rb] OrderPool::add_sink adding mempool order {:?} for chain {:?}", order, chain_id);
+                    println!("[rb] OrderPool::add_sink adding mempool order {:?} for chain {:?} at block {:?}", order, chain_id, block_number);
                     sink.insert_order(order.clone());
-                    return false;
                 }
-            }
-            true
+            }        
         });
         for cancellation_key in self.bundle_cancellations.iter().map(|(key, _)| key) {
             sink.remove_bundle(OrderReplacementKey::Bundle(*cancellation_key));

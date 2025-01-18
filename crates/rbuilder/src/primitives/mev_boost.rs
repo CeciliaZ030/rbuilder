@@ -1,10 +1,11 @@
 use crate::live_builder::gwyneth::{EthApiStream, EthTxSender};
 use crate::mev_boost::{RelayClient, SubmitBlockErr, SubmitBlockRequest};
 
-use crate::proposing::BlockProposer;
+use crate::proposing::{BlockProposer, ProposalCache};
 
 use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
 use jsonrpsee::http_client::HttpClient;
+use parking_lot::RwLock;
 use serde::{Deserialize, Deserializer};
 use web3::contract;
 use std::{env, sync::Arc, time::Duration};
@@ -77,7 +78,11 @@ pub struct MevBoostRelay {
 
 impl MevBoostRelay {
     
-    pub fn from_config(config: &RelayConfig, l1_client: Option<HttpClient>) -> eyre::Result<Self> {
+    pub fn from_config(
+        config: &RelayConfig, 
+        l1_client: Option<HttpClient>, 
+        proposal_cache: Option<Arc<RwLock<ProposalCache>>>
+    ) -> eyre::Result<Self> {
         let client = {
             let url: Url = config.url.parse()?;
             RelayClient::from_url(
@@ -94,12 +99,17 @@ impl MevBoostRelay {
             ))
         });
 
-        let block_proposer = if let (Some(l1_proposer_pk), Some(contract_address)) = (&config.l1_proposer_pk, &config.l1_rollup_contract) {
+        let block_proposer = if let (
+            Some(l1_proposer_pk), 
+            Some(contract_address),
+            Some(proposal_cache)
+        ) = (&config.l1_proposer_pk, &config.l1_rollup_contract, proposal_cache) {
             Some(BlockProposer::new(
                 l1_client, 
                 config.l1_proposal_url.clone(), 
                 contract_address.clone(), 
-                l1_proposer_pk.clone()
+                l1_proposer_pk.clone(),
+                proposal_cache.clone(),
             )?)
         } else {
             None
@@ -119,9 +129,9 @@ impl MevBoostRelay {
 
     // Brecht: Can make a proposeBlock call here to L1 with the given block
     // Can implement a custom "relay" for gwyneth that has this behaviour
-    pub async fn submit_block(&self, data: &SubmitBlockRequest) -> Result<(), SubmitBlockErr> {
+    pub async fn submit_block(&mut self, data: &SubmitBlockRequest) -> Result<(), SubmitBlockErr> {
         // Handle the Option<BlockProposer>
-        if let Some(proposer) = &self.block_proposer {
+        if let Some(proposer) = &mut self.block_proposer {
             // Call propose_block on the BlockProposer with the SubmitBlockRequest
             proposer
                 .propose_block(data)

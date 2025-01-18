@@ -54,6 +54,7 @@ use ethereum_consensus::{
 use eyre::Context;
 use gwyneth::exex::L1ParentStates;
 use jsonrpsee::http_client::HttpClient;
+use parking_lot::RwLock;
 use reth::{builder::NodeConfig, tasks::pool::BlockingTaskPool};
 use reth_chainspec::{Chain, ChainSpec, NamedChain};
 use reth_db::{Database, DatabaseEnv};
@@ -212,10 +213,11 @@ impl L1Config {
 
     pub fn create_relays(&self, l1_client: Option<HttpClient>) -> eyre::Result<Vec<MevBoostRelay>> {
         let mut results = Vec::new();
+        let proposal_cache = Some(Arc::new(RwLock::new(Default::default()))); 
         for config in &self.relays {
             // println!("[rb] Dani debug - create relays: {:?}", config);
             // Only the config with l1 proposer infos will have BlockProposer
-            let relay = MevBoostRelay::from_config(config, l1_client.clone())?;
+            let relay = MevBoostRelay::from_config(config, l1_client.clone(), proposal_cache.clone())?;
             results.push(relay);
         }
         Ok(results)

@@ -7,8 +7,10 @@ use eyre::Result;
 //use revm_primitives::{Address, B256, U256};
 use alloy_primitives::{Address, B256, U256};
 use jsonrpsee::{core::traits::ToRpcParams, http_client::HttpClient, types::Request};
+use parking_lot::RwLock;
 use reth::rpc::server_types::eth::receipt;
-use reth_primitives::{TransactionSigned, U64};
+use reth_primitives::{TransactionSigned, TxHash, U64};
+use sha2::digest::consts::U643;
 //use revm_primitives::address;
 use url::Url;
 //use crate::mev_boost::{SubmitBlockRequest};
@@ -16,7 +18,7 @@ use url::Url;
 use alloy_network::eip2718::Encodable2718;
 use alloy_rpc_types_engine::ExecutionPayload;
 use alloy_sol_types::{sol, SolCall, SolType};
-use std::{str::FromStr, sync::Arc};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use alloy_rpc_types::{TransactionInput, TransactionReceipt, TransactionRequest};
 use serde_json::value::RawValue;
@@ -65,30 +67,76 @@ pub struct BlockProposer {
     l1_rpc: Option<String>,
     contract_address: String,
     private_key: String,
+    // proposal_cache: HashMap<u64, Vec<TxHash>>,
+    // last_proposed_block: Option<u64>,
+    proposal_cache: Arc<RwLock<ProposalCache>>,
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct ProposalCache {
+    pub last_proposed_block: Option<(u64, u64)>,
+    pub proposal_cache: HashMap<(u64, u64), Vec<TxHash>>,
+}
+
+impl ProposalCache {
+    fn exists(&self, chain_id: u64, block_number: u64) -> bool {
+        match (self.proposal_cache.get(&(chain_id, block_number)), self.last_proposed_block) {
+            (Some(_), _) => true,
+            (_, Some((c, b))) if (c == chain_id && b == block_number) => true,  
+            _ => false
+        }
+    }
+
+    fn update(&mut self,chain_id: u64, block_number: u64, transactions: Vec<TxHash>) {
+        self.proposal_cache.insert((chain_id, block_number), transactions);
+        self.last_proposed_block = Some((chain_id, block_number));
+    }
+
+    fn remove_repetition(&mut self, transactions: &mut Vec<TransactionSigned>) {
+        if let Some((chain_id, last_proposed_block)) = self.last_proposed_block {
+            let proposed_set = self.proposal_cache
+                .get(&(chain_id, last_proposed_block))
+                .expect("Last proposed block not found");
+            transactions.retain(|tx| !proposed_set.contains(&tx.hash));
+        };
+    }
 }
 
 impl BlockProposer {
-    pub fn new(l1_client: Option<HttpClient>, l1_rpc: Option<String>, contract_address: String, private_key: String) -> Result<Self> {
+    pub fn new(
+        l1_client: Option<HttpClient>, 
+        l1_rpc: Option<String>, 
+        contract_address: String, 
+        private_key: String, 
+        proposal_cache: Arc<RwLock<ProposalCache>>
+    ) -> Result<Self> {
         Ok(BlockProposer {
             l1_client,
             l1_rpc,
             contract_address,
             private_key,
+            // proposal_cache: HashMap::new(),
+            // last_proposed_block: None,
+            proposal_cache,
         })
     }
 
-    pub async fn propose_block(&self, request: &SubmitBlockRequest) -> Result<(), RelayError> {
-
+    pub async fn propose_block(&mut self, request: &SubmitBlockRequest) -> Result<(), RelayError> {
         let execution_payload = request.execution_payload();
-        let (meta, num_txs) = self.create_propose_block_tx_data(&execution_payload)
-            .expect("Failed to create BlockMetadata in propose block");
 
-        let propose_data = Rollup::proposeBlockCall {
+        
+        println!("[rb] proposal cache{:?}", self.proposal_cache);
+
+        let (meta, txs) = self.create_block_metadata(&execution_payload)
+            .map_err(|e| RelayError::ProposalError(e.to_string()))?;
+
+        let proposed_data = Rollup::proposeBlockCall {
             data: vec![meta.clone()],
         }.abi_encode();
 
         let decoded_transactions: Vec<TransactionSigned> = decode_transactions(&meta.txList);
         println!("[rb] Propose block decoded_transactions: {:?}", decoded_transactions.len());
+
 
         // Create a signer from a random private key.
         let signer = PrivateKeySigner::from_str(&self.private_key).unwrap();
@@ -99,7 +147,7 @@ impl BlockProposer {
         let mut tx = TransactionRequest::default()
             .with_to(Address::from_str(&self.contract_address).unwrap())
             .input(TransactionInput {
-                input: Some(propose_data.into()),
+                input: Some(proposed_data.into()),
                 data: None,
             })
             .with_value(U256::from(0))
@@ -128,7 +176,15 @@ impl BlockProposer {
                     .send_raw_transaction(&tx_encoded)
                     .await
                     .map_err(|e| RelayError::ProposalError(e.to_string()))?;
-                // println!("[rb] Pending transaction... {}", pending_tx.tx_hash());
+                println!("[rb] Pending transaction... {}", pending_tx.tx_hash());
+                
+                self.proposal_cache.write().update(
+                    txs.first().unwrap().chain_id().unwrap(), 
+                    meta.l2BlockNumber, 
+                    txs.iter().map(|tx| tx.hash).collect()
+                );
+                println!("[rb] proposal cache updated {:?}", self.proposal_cache);
+
                 pending_tx.get_receipt().await.map_err(|e| RelayError::ProposalError(e.to_string()))?
             },
             (Some(client), _) => {
@@ -157,6 +213,14 @@ impl BlockProposer {
                     .await
                     .map_err(|e| RelayError::ProposalError(e.to_string()))?
                     .to_string();
+
+                self.proposal_cache.write().update(
+                    txs.first().unwrap().chain_id().unwrap(), 
+                    meta.l2BlockNumber, 
+                    txs.iter().map(|tx| tx.hash).collect()
+                );
+                println!("[rb] proposal cache updated {:?}", self.proposal_cache);
+
                 // println!("[rb] BlockProposer eth_sendRawTransaction");
                 let mut receipt = None;
                 loop {
@@ -182,29 +246,43 @@ impl BlockProposer {
     }
 
     // The logic to create the transaction (call)data for proposing the block
-    fn create_propose_block_tx_data(
-        &self,
+    fn create_block_metadata(
+        &mut self,
         execution_payload: &ExecutionPayload,
-    ) -> Result<(BlockMetadata, usize)> {
+    ) -> Result<(BlockMetadata, Vec<TransactionSigned>)> {
         let execution_payload = match execution_payload {
             ExecutionPayload::V2(payload) => &payload.payload_inner,
             ExecutionPayload::V3(payload) => &payload.payload_inner.payload_inner,
             _ => {
-                // println!("[rb] Unsupported ExecutionPayload version");
                 return Err(eyre::eyre!("Unsupported ExecutionPayload version"));
             }
         };
 
-        let mut transactions = Vec::new();
-        for tx_data in execution_payload.transactions.iter() {
-            transactions.push(TransactionSigned::decode(&mut tx_data.to_vec().as_slice()).unwrap());
+        let block_number = execution_payload.block_number;
+        let mut transactions = execution_payload
+            .transactions
+            .iter()
+            .map(|tx| TransactionSigned::decode(&mut tx.to_vec().as_slice()).expect("Failed to decode transaction"))
+            .collect::<Vec<_>>();
+        if transactions.is_empty() {
+            return Err(eyre::eyre!("No transactions to propose"));
+        }
+        let chain_id = transactions.first().unwrap().chain_id().unwrap();
+        // Do not propose the same block twice
+        if self.proposal_cache.read().exists(chain_id, block_number) {
+            return Err(eyre::eyre!("Block already proposed"));
+        }
+        self.proposal_cache.write().remove_repetition(&mut transactions);
+        if transactions.is_empty() {
+            println!("[rb] No transactions to propose");
+            return Err(eyre::eyre!("No transactions to propose"));
         }
 
         let mut tx_list = Vec::new();
         transactions.encode(&mut tx_list);
         let tx_list_hash = B256::from(alloy_primitives::keccak256(&tx_list));
 
-        println!("[rb] proposing for block: {} with {} tx", execution_payload.block_number, execution_payload.transactions.len());
+        println!("[rb] proposing for block: {} with {} tx", block_number, execution_payload.transactions.len());
 
         let meta = BlockMetadata {
             blockHash: execution_payload.block_hash,
@@ -215,7 +293,7 @@ impl BlockProposer {
             blobHash: tx_list_hash,
             extraData: /*execution_payload.extra_data.try_into().unwrap()*/ B256::default(),
             coinbase: execution_payload.fee_recipient,
-            l2BlockNumber: execution_payload.block_number,
+            l2BlockNumber: block_number,
             gasLimit: execution_payload.gas_limit.try_into().map_err(|_| eyre::eyre!("Gas limit overflow"))?,
             l1StateBlockNumber: 0, // Preconfer/builder has to set this.
             timestamp: execution_payload.timestamp,
@@ -225,7 +303,7 @@ impl BlockProposer {
             txList: tx_list.into(),
         };
 
-        Ok((meta, execution_payload.transactions.len()))
+        Ok((meta, transactions))
     }
 }
 

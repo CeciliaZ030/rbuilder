@@ -29,6 +29,8 @@ fn main() -> eyre::Result<()> {
     reth_cli_util::sigsegv_handler::install();
 
     if let Err(err) = Cli::<GwynethArgs>::parse().run(|builder, arg| async move {
+        println!("ignore-payload {:?}", builder.config().builder.ignore_payload);
+
         let l1_node_config = builder.config().clone();
         let task_executor = builder.task_executor().clone();
         let gwyneth_nodes = create_gwyneth_nodes(&arg, task_executor.clone(), &l1_node_config).await;
