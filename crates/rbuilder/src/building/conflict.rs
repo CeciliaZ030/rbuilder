@@ -1,5 +1,6 @@
 use super::{BlockBuildingContext, BlockState, PartialBlockFork};
 use crate::primitives::{Order, OrderId};
+use alloy_primitives::Address;
 use itertools::Itertools;
 use reth::providers::StateProviderBox;
 use reth_provider::StateProvider;

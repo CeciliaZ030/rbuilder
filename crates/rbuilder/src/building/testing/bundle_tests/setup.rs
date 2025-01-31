@@ -13,7 +13,7 @@ use crate::{
     },
 };
 use alloy_primitives::TxHash;
-use reth_payload_builder::database::SyncCachedReads as CachedReads;
+use reth::revm::cached::SyncCachedReads as CachedReads;
 use revm::db::BundleState;
 use revm_primitives::ChainAddress;
 
@@ -218,7 +218,6 @@ impl TestSetup {
         let sim_order = SimulatedOrder {
             order: self.order_builder.build_order(),
             sim_value: Default::default(),
-            prev_order: Default::default(),
             used_state_trace: Default::default(),
         };
 

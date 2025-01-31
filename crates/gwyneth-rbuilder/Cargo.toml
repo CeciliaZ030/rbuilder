@@ -11,11 +11,13 @@ reth.workspace = true
 reth-node-builder.workspace = true
 reth-node-ethereum.workspace = true
 reth-provider.workspace = true
+reth-transaction-pool.workspace = true
 reth-cli-util.workspace = true
 reth-cli-commands.workspace = true
 reth-db-api.workspace = true
 reth-db.workspace = true
 reth-db-common.workspace = true
+alloy-rlp.workspace = true
 
 tokio.workspace = true
 clap.workspace = true
@@ -28,4 +30,6 @@ tikv-jemallocator = { workspace = true, optional = true }
 libc.workspace = true
 
 [features]
-jemalloc = []
+jemalloc = [
+	"reth-cli-util/jemalloc"
+]

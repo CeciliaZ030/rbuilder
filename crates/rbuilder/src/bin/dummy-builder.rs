@@ -19,7 +19,7 @@ use rbuilder::{
     },
     live_builder::{
         base_config::{
-            DEFAULT_EL_NODE_IPC_PATH, DEFAULT_INCOMING_BUNDLES_PORT, DEFAULT_IP,
+            default_ip, DEFAULT_EL_NODE_IPC_PATH, DEFAULT_INCOMING_BUNDLES_PORT,
             DEFAULT_RETH_DB_PATH,
         }, config::create_provider_factory, gwyneth::GwynethNodes, order_input::{
             OrderInputConfig, DEFAULT_INPUT_CHANNEL_BUFFER_SIZE, DEFAULT_RESULTS_CHANNEL_TIMEOUT,
@@ -30,14 +30,17 @@ use rbuilder::{
         mev_boost::{MevBoostRelay, RelayConfig},
         SimulatedOrder,
     },
-    roothash::RootHashConfig,
+    provider::StateProviderFactory,
     utils::{ProviderFactoryReopener, Signer},
 };
-use reth::tasks::pool::BlockingTaskPool;
 use reth_chainspec::MAINNET;
-use reth_db::{database::Database, DatabaseEnv};
-use reth_provider::{DatabaseProviderFactory, StateProviderFactory};
-use tokio::{signal::ctrl_c, sync::broadcast};
+use reth_db::DatabaseEnv;
+use reth_node_api::NodeTypesWithDBAdapter;
+use reth_node_ethereum::EthereumNode;
+use tokio::{
+    signal::ctrl_c,
+    sync::{broadcast, mpsc},
+};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, level_filters::LevelFilter};
 
@@ -67,33 +70,34 @@ async fn main() -> eyre::Result<()> {
         cancel.clone(),
     );
 
+    let order_input_config = OrderInputConfig::new(
+        false,
+        true,
+        Some(PathBuf::from(DEFAULT_EL_NODE_IPC_PATH)),
+        DEFAULT_INCOMING_BUNDLES_PORT,
+        default_ip(),
+        DEFAULT_SERVE_MAX_CONNECTIONS,
+        DEFAULT_RESULTS_CHANNEL_TIMEOUT,
+        DEFAULT_INPUT_CHANNEL_BUFFER_SIZE,
+    );
+    let (orderpool_sender, orderpool_receiver) =
+        mpsc::channel(order_input_config.input_channel_buffer_size);
     let builder = LiveBuilder::<
-        ProviderFactoryReopener<Arc<DatabaseEnv>>,
-        Arc<DatabaseEnv>,
+        ProviderFactoryReopener<NodeTypesWithDBAdapter<EthereumNode, Arc<DatabaseEnv>>>,
         MevBoostSlotDataGenerator,
     > {
-        watchdog_timeout: Duration::from_secs(10000),
+        watchdog_timeout: Some(Duration::from_secs(10000)),
         error_storage_path: None,
         simulation_threads: 1,
         blocks_source: payload_event,
-        run_sparse_trie_prefetcher: false,
-        order_input_config: OrderInputConfig::new(
-            false,
-            true,
-            DEFAULT_EL_NODE_IPC_PATH.parse().unwrap(),
-            DEFAULT_INCOMING_BUNDLES_PORT,
-            *DEFAULT_IP,
-            DEFAULT_SERVE_MAX_CONNECTIONS,
-            DEFAULT_RESULTS_CHANNEL_TIMEOUT,
-            DEFAULT_INPUT_CHANNEL_BUFFER_SIZE,
-            false,
-        ),
+        order_input_config,
         chain_chain_spec: chain_spec.clone(),
         provider: create_provider_factory(
             Some(&RETH_DB_PATH.parse::<PathBuf>().unwrap()),
             None,
             None,
             chain_spec.clone(),
+            None,
         )?,
         coinbase_signer: Signer::random(),
         extra_data: Vec::new(),
@@ -103,7 +107,10 @@ async fn main() -> eyre::Result<()> {
         extra_rpc: RpcModule::new(()),
         sink_factory: Box::new(TraceBlockSinkFactory {}),
         builders: vec![Arc::new(DummyBuildingAlgorithm::new(10))],
-        gwyneth_nodes: GwynethNodes::default(),
+        orderpool_sender,
+        orderpool_receiver,
+        sbundle_merger_selected_signers: Default::default(),
+        gwyneth_nodes: GwynethNodes::default(), // TODO(cecilia)
     };
 
     let ctrlc = tokio::spawn(async move {
@@ -152,7 +159,6 @@ impl UnfinishedBlockBuildingSink for TracingBlockSink {
 ////////////////////////////
 /// BUILDING ALGORITHM
 ////////////////////////////
-
 /// Dummy algorithm that waits for some orders and creates a block inserting them in the order they arrived.
 /// Generates only a single block.
 /// This is a NOT real builder some data is not filled correctly (eg:BuiltBlockTrace)
@@ -160,19 +166,13 @@ impl UnfinishedBlockBuildingSink for TracingBlockSink {
 struct DummyBuildingAlgorithm {
     /// Amnount of used orders to build a block
     orders_to_use: usize,
-    root_hash_task_pool: BlockingTaskPool,
 }
 
 const ORDER_POLLING_PERIOD: Duration = Duration::from_millis(10);
 const BUILDER_NAME: &str = "DUMMY";
 impl DummyBuildingAlgorithm {
     pub fn new(orders_to_use: usize) -> Self {
-        Self {
-            orders_to_use,
-            root_hash_task_pool: BlockingTaskPool::new(
-                BlockingTaskPool::builder().num_threads(1).build().unwrap(),
-            ),
-        }
+        Self { orders_to_use }
     }
 
     fn wait_for_orders(
@@ -196,20 +196,17 @@ impl DummyBuildingAlgorithm {
         }
     }
 
-    fn build_block<P, DB>(
+    fn build_block<P>(
         &self,
         orders: Vec<SimulatedOrder>,
         providers: HashMap<u64, P>,
         ctx: &BlockBuildingContext,
     ) -> eyre::Result<Box<dyn BlockBuildingHelper>>
     where
-        DB: Database + Clone + 'static,
-        P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+        P: StateProviderFactory + Clone + 'static,
     {
         let mut block_building_helper = BlockBuildingHelperFromProvider::new(
             providers.clone(),
-            self.root_hash_task_pool.clone(),
-            RootHashConfig::live_config(false, false),
             ctx.clone(),
             None,
             BUILDER_NAME.to_string(),
@@ -226,10 +223,9 @@ impl DummyBuildingAlgorithm {
     }
 }
 
-impl<P, DB> BlockBuildingAlgorithm<P, DB> for DummyBuildingAlgorithm
+impl<P> BlockBuildingAlgorithm<P> for DummyBuildingAlgorithm
 where
-    DB: Database + Clone + 'static,
-    P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static,
+    P: StateProviderFactory + Clone + 'static,
 {
     fn name(&self) -> String {
         BUILDER_NAME.to_string()

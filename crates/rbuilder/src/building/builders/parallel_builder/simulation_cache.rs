@@ -2,10 +2,12 @@ use crate::primitives::OrderId;
 use ahash::HashMap;
 use alloy_primitives::U256;
 use parking_lot::RwLock as PLRwLock;
-use reth_payload_builder::database::CachedReads;
+use reth::revm::cached::CachedReads;
 use revm::db::BundleState;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 
 /// An instance of a simulation result that has been cached.
 #[derive(Debug, Clone)]
@@ -184,10 +186,10 @@ impl Default for SharedSimulationCache {
 mod tests {
     use super::*;
     use alloy_primitives::{Address, B256, U256};
-    use reth_primitives::revm_primitives::AccountInfo;
     use revm::db::{states::StorageSlot, AccountStatus, BundleAccount};
+    use revm_primitives::AccountInfo;
     use std::collections::HashMap;
-
+    type AlloyHashMap<K, V> = HashMap<K, V, foldhash::fast::RandomState>;
     struct TestDataGenerator {
         last_used_id: u64,
     }
@@ -206,11 +208,12 @@ mod tests {
 
         fn create_cached_simulation_state(&mut self) -> CachedSimulationState {
             let mut cached_reads = CachedReads::default();
-            let mut storage = HashMap::new();
+            let mut storage = AlloyHashMap::default();
             storage.insert(U256::from(self.last_used_id), U256::from(self.last_used_id));
             cached_reads.insert_account(Address::random(), AccountInfo::default(), storage);
 
-            let mut storage_bundle_account: HashMap<U256, StorageSlot> = HashMap::new();
+            let mut storage_bundle_account: AlloyHashMap<U256, StorageSlot> =
+                AlloyHashMap::default();
             let storage_slot = StorageSlot::new_changed(
                 U256::from(self.last_used_id),
                 U256::from(self.last_used_id + 1),

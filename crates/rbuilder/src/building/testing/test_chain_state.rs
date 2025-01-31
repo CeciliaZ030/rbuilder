@@ -1,23 +1,23 @@
-use ahash::{HashMap, HashSet};
-use alloy_primitives::{keccak256, utils::parse_ether, Address, BlockHash, Bytes, B256, U256};
+use crate::provider::RootHasher;
+use crate::roothash::RootHashConfig;
+use crate::utils::RootHasherImpl;
+use crate::{building::BlockBuildingContext, utils::Signer};
+use ahash::HashSet;
+use alloy_consensus::{Header, TxEip1559};
+use alloy_primitives::{
+    keccak256, utils::parse_ether, Address, BlockHash, Bytes, TxKind as TransactionKind, B256, B64,
+    U256,
+};
+use alloy_rpc_types_beacon::events::{PayloadAttributesData, PayloadAttributesEvent};
 use lazy_static::lazy_static;
 use reth::{
-    primitives::{
-        Account, BlockBody, Bytecode, Header, SealedBlock, TransactionSignedEcRecovered, TxEip1559,
-        TxKind as TransactionKind,
-    },
+    primitives::{Account, BlockBody, Bytecode, SealedBlock, TransactionSignedEcRecovered},
     providers::ProviderFactory,
-    rpc::types::{
-        beacon::events::{PayloadAttributesData, PayloadAttributesEvent},
-        engine::PayloadAttributes,
-        Withdrawal,
-    },
+    rpc::types::{engine::PayloadAttributes, Withdrawal},
 };
 use reth_chainspec::{ChainSpec, MAINNET};
-use reth_db::{
-    cursor::DbCursorRW, tables, test_utils::TempDatabase, transaction::DbTxMut, DatabaseEnv,
-};
-use reth_provider::test_utils::create_test_provider_factory;
+use reth_db::{cursor::DbCursorRW, tables, transaction::DbTxMut};
+use reth_provider::test_utils::{create_test_provider_factory, MockNodeTypesWithDB};
 use revm_primitives::{ChainAddress, OnChain, SpecId};
 use std::sync::Arc;
 
@@ -73,12 +73,39 @@ pub struct TestChainState {
     mev_test_address: Address,   //NamedAddr::MevTest
     dummy_test_address: Address, //NamedAddr::Dummy
     blocklisted_address: Signer, //NamedAddr::BlockedAddress
-    pub chain_spec: Arc<ChainSpec>,
-    provider_factory: ProviderFactory<Arc<TempDatabase<DatabaseEnv>>>,
+    chain_spec: Arc<ChainSpec>,
+    provider_factory: ProviderFactory<MockNodeTypesWithDB>,
     block_building_context: BlockBuildingContext,
 }
+pub struct ContractData {
+    address: Address,
+    code: Bytes,
+    code_hash: B256,
+}
+
+impl ContractData {
+    pub fn new(code: &Bytes, address: Address) -> Self {
+        let code_hash = keccak256(code);
+        ContractData {
+            address,
+            code: code.clone(),
+            code_hash,
+        }
+    }
+}
+
 impl TestChainState {
     pub fn new(block_args: BlockArgs) -> eyre::Result<Self> {
+        Self::new_with_balances_and_contracts(block_args, Default::default(), Default::default())
+    }
+
+    /// balances_to_increase this addresses start with that initial balances.
+    /// extra_contracts are deploy along with the default mev_test.
+    pub fn new_with_balances_and_contracts(
+        block_args: BlockArgs,
+        balances_to_increase: Vec<(Address, u128)>,
+        extra_contracts: Vec<ContractData>,
+    ) -> eyre::Result<Self> {
         let blocklisted_address = Signer::random();
         let builder = Signer::random();
         let fee_recipient = Signer::random();
@@ -93,7 +120,10 @@ impl TestChainState {
         let mev_test_address = Address::random();
         let dummy_test_address = Address::random();
         let test_contracts = TestContracts::load();
-        let (mev_test_hash, mev_test_code) = test_contracts.mev_test();
+
+        let mut contracts = extra_contracts;
+        contracts.push(test_contracts.mev_test(mev_test_address));
+
         let genesis_header = chain_spec.sealed_genesis_header();
         let provider_factory = create_test_provider_factory();
         {
@@ -127,25 +157,47 @@ impl TestChainState {
                         },
                     )?;
                 }
+                // Failed to map user_addresses and chain it with balances_to_increase :(
+                for (address, balance) in balances_to_increase {
+                    cursor.upsert(
+                        address,
+                        Account {
+                            nonce: 0,
+                            balance: U256::from(balance),
+                            bytecode_hash: None,
+                        },
+                    )?;
+                }
 
-                cursor.upsert(
-                    mev_test_address,
-                    Account {
-                        nonce: 0,
-                        balance: U256::ZERO,
-                        bytecode_hash: Some(mev_test_hash),
-                    },
-                )?;
+                for contract in &contracts {
+                    cursor.upsert(
+                        contract.address,
+                        Account {
+                            nonce: 0,
+                            balance: U256::ZERO,
+                            bytecode_hash: Some(contract.code_hash),
+                        },
+                    )?;
+                }
             }
             {
                 let mut cursor = provider
                     .tx_ref()
                     .cursor_write::<tables::Bytecodes>()
                     .unwrap();
-                cursor.upsert(mev_test_hash, Bytecode::new_raw(mev_test_code))?;
+                for contract in &contracts {
+                    cursor.upsert(contract.code_hash, Bytecode::new_raw(contract.code.clone()))?;
+                }
             }
             provider.commit()?;
         }
+
+        let root_hasher = Arc::from(RootHasherImpl::new(
+            genesis_header.hash(),
+            RootHashConfig::new(true, false),
+            provider_factory.clone(),
+        ));
+
         let ctx = TestBlockContextBuilder::new(
             block_args,
             builder.clone(),
@@ -153,6 +205,7 @@ impl TestChainState {
             chain_spec.clone(),
             blocklisted_address.address.1,
             genesis_header.hash(),
+            root_hasher,
         )
         .build();
 
@@ -229,7 +282,7 @@ impl TestChainState {
             .clone()
     }
 
-    pub fn provider_factory(&self) -> &ProviderFactory<Arc<TempDatabase<DatabaseEnv>>> {
+    pub fn provider_factory(&self) -> &ProviderFactory<MockNodeTypesWithDB> {
         &self.provider_factory
     }
 }
@@ -251,6 +304,7 @@ struct TestBlockContextBuilder {
     blocklist: HashSet<Address>,
     prefer_gas_limit: Option<u64>,
     use_suggested_fee_recipient_as_coinbase: bool,
+    root_hasher: Arc<dyn RootHasher>,
 }
 
 impl TestBlockContextBuilder {
@@ -261,6 +315,7 @@ impl TestBlockContextBuilder {
         chain_spec: Arc<ChainSpec>,
         blocklisted: Address,
         parent_hash: BlockHash,
+        root_hasher: Arc<dyn RootHasher>,
     ) -> Self {
         TestBlockContextBuilder {
             parent_gas_limit: 30_000_000,
@@ -279,6 +334,7 @@ impl TestBlockContextBuilder {
             prefer_gas_limit: None,
             use_suggested_fee_recipient_as_coinbase: block_args
                 .use_suggested_fee_recipient_as_coinbase,
+            root_hasher,
         }
     }
 
@@ -316,13 +372,13 @@ impl TestBlockContextBuilder {
                 gas_used: self.parent_gas_used,
                 timestamp: self.parent_timestamp,
                 mix_hash: Default::default(),
-                nonce: 0,
+                nonce: B64::ZERO,
                 base_fee_per_gas: Some(self.parent_base_fee_per_gas),
                 blob_gas_used: None,
                 excess_blob_gas: None,
                 parent_beacon_block_root: None,
                 extra_data: Default::default(),
-                requests_root: Default::default(),
+                requests_hash: Default::default(),
             },
             self.builder_signer.clone(),
             self.chain_spec.clone(),
@@ -330,7 +386,9 @@ impl TestBlockContextBuilder {
             self.prefer_gas_limit,
             vec![],
             Some(SpecId::SHANGHAI),
-        );
+            self.root_hasher,
+        )
+        .unwrap();
         if self.use_suggested_fee_recipient_as_coinbase {
             res.modify_use_suggested_fee_recipient_as_coinbase();
         }
@@ -478,6 +536,7 @@ impl TxArgs {
     }
 }
 
+/// This contract was generated from mev-test-contract/src/MevTest.sol
 static TEST_CONTRACTS: &str = include_str!("./contracts.json");
 
 #[derive(Debug, serde::Deserialize)]
@@ -509,8 +568,7 @@ impl TestContracts {
         serde_json::from_str(TEST_CONTRACTS).expect("failed to load test contracts")
     }
 
-    fn mev_test(&self) -> (B256, Bytes) {
-        let hash = keccak256(&self.mev_test);
-        (hash, self.mev_test.clone())
+    fn mev_test(&self, address: Address) -> ContractData {
+        ContractData::new(&self.mev_test, address)
     }
 }

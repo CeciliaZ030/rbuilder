@@ -5,11 +5,13 @@ use super::{
 use crate::{
     building::{BlockBuildingContext, BlockState, CriticalCommitOrderError},
     primitives::{Order, OrderId, SimValue, SimulatedOrder},
+    provider::StateProviderFactory,
     utils::{NonceCache, NonceCacheRef},
 };
 use ahash::{HashMap, HashSet};
 use alloy_primitives::{Address, B256};
 use rand::seq::SliceRandom;
+use reth::revm::cached::CachedReads;
 use reth_errors::ProviderError;
 use reth_payload_builder::database::SyncCachedReads as CachedReads;
 use reth_provider::{StateProvider, StateProviderFactory};
@@ -89,7 +91,7 @@ enum OrderNonceState {
 
 impl<P> SimTree<P>
 where
-    P: StateProviderFactory + Clone + 'static,
+    P: StateProviderFactory,
 {
     pub fn new(provider: HashMap<u64, P>, parent_block: HashMap<u64, B256>) -> Self {
         let nonce_cache = NonceCache::new(provider, parent_block);
@@ -322,7 +324,7 @@ pub fn simulate_all_orders_with_sim_tree<P>(
     randomize_insertion: bool,
 ) -> Result<(Vec<SimulatedOrder>, Vec<OrderErr>), CriticalCommitOrderError>
 where
-    P: StateProviderFactory + Clone + 'static,
+    P: StateProviderFactory + Clone,
 {
     // println!("[rb] simulate_all_orders_with_sim_tree");
     let parent_block_hashes = ctx
@@ -453,14 +455,12 @@ pub fn simulate_order_using_fork<Tracer: SimulationTracer>(
     fork: &mut PartialBlockFork<'_, '_, Tracer>,
 ) -> Result<OrderSimResult, CriticalCommitOrderError> {
     // simulate parents
-    let mut prev_order = None;
     let mut gas_used = 0;
     let mut blob_gas_used = 0;
     for parent in parent_orders {
         let result = fork.commit_order(&parent, ctx, gas_used, 0, blob_gas_used, true)?;
         match result {
             Ok(res) => {
-                prev_order = Some(parent.id());
                 gas_used += res.gas_used;
                 blob_gas_used += res.blob_gas_used;
             }
@@ -490,7 +490,6 @@ pub fn simulate_order_using_fork<Tracer: SimulationTracer>(
                 SimulatedOrder {
                     order,
                     sim_value,
-                    prev_order,
                     used_state_trace: res.used_state_trace,
                 },
                 new_nonces,

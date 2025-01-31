@@ -2,16 +2,19 @@
 //! This only works when reth node is stopped and the chain moved forward form its synced state
 //! It downloads block aftre the last one synced and re-executes all the txs in it.
 use alloy_provider::Provider;
+use alloy_rpc_types::BlockTransactionsKind;
 use clap::Parser;
 use eyre::Context;
 use itertools::Itertools;
 use rbuilder::{
     building::{BlockBuildingContext, BlockState, PartialBlock, PartialBlockFork},
     live_builder::{base_config::load_config_toml_and_env, cli::LiveBuilderConfig, config::Config},
+    provider::StateProviderFactory,
     utils::{extract_onchain_block_txs, find_suggested_fee_recipient, http_provider},
 };
 use reth::providers::BlockNumReader;
-use reth_payload_builder::database::SyncCachedReads as CachedReads;
+
+use reth::revm::cached::SyncCachedReads as CachedReads;
 use reth_provider::StateProvider;
 use revm_primitives::ChainAddress;
 use std::{path::PathBuf, sync::Arc, time::Instant};
@@ -43,12 +46,12 @@ async fn main() -> eyre::Result<()> {
 
     let chain_spec = config.base_config().chain_spec()?;
 
-    let provider_factory = config.base_config().create_provider_reopener()?;
+    let provider_factory = config.base_config().create_provider_factory(false)?;
 
     let last_block = provider_factory.last_block_number()?;
 
     let onchain_block = rpc
-        .get_block_by_number((last_block + 1).into(), true)
+        .get_block_by_number((last_block + 1).into(), BlockTransactionsKind::Full)
         .await?
         .ok_or_else(|| eyre::eyre!("block not found on rpc"))?;
 
@@ -62,6 +65,7 @@ async fn main() -> eyre::Result<()> {
 
     let coinbase = ChainAddress(chain_spec.chain.id(), onchain_block.header.miner);
 
+    let parent_hash = onchain_block.header.parent_hash;
     let ctx = BlockBuildingContext::from_onchain_block(
         onchain_block,
         chain_spec.clone(),
@@ -70,6 +74,7 @@ async fn main() -> eyre::Result<()> {
         coinbase,
         suggested_fee_recipient,
         None,
+        Arc::from(provider_factory.root_hasher(parent_hash)),
     );
 
     let chain_id = chain_spec.clone().chain.id();
@@ -87,9 +92,6 @@ async fn main() -> eyre::Result<()> {
         let ctx = ctx.clone();
         let txs = txs.clone();
         let state_provider = state_provider.clone();
-        let factory = provider_factory.clone();
-        let config = config.clone();
-        let root_hash_config = config.base_config.live_root_hash_config()?;
         let (new_cached_reads, build_time, finalize_time) =
             tokio::task::spawn_blocking(move || -> eyre::Result<_> {
                 let partial_block = PartialBlock::new(true, None);
@@ -115,13 +117,7 @@ async fn main() -> eyre::Result<()> {
                 let build_time = build_time.elapsed();
 
                 let finalize_time = Instant::now();
-                let finalized_block = partial_block.finalize(
-                    &mut state,
-                    &ctx,
-                    factory.clone(),
-                    root_hash_config.clone(),
-                    config.base_config().root_hash_task_pool()?,
-                )?;
+                let finalized_block = partial_block.finalize(&mut state, &ctx)?;
                 let finalize_time = finalize_time.elapsed();
 
                 debug!(

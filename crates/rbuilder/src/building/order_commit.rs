@@ -12,14 +12,11 @@ use crate::{
 
 use alloy_primitives::{Address, B256, U256};
 
-use reth::revm::database::{StateProviderDatabase, SyncStateProviderDatabase};
+use alloy_consensus::{constants::KECCAK_EMPTY, Transaction};
+use alloy_eips::eip4844::{DATA_GAS_PER_BLOB, MAX_DATA_GAS_PER_BLOCK};
+use reth::revm::{cached::SyncCachedReads as CachedReads, database::{StateProviderDatabase, SyncStateProviderDatabase}};
 use reth_errors::ProviderError;
-use reth_payload_builder::database::SyncCachedReads as CachedReads;
-use reth_primitives::{
-    constants::eip4844::{DATA_GAS_PER_BLOB, MAX_DATA_GAS_PER_BLOCK},
-    transaction::FillTxEnv,
-    Receipt, KECCAK_EMPTY,
-};
+use reth_primitives::{transaction::FillTxEnv, Receipt};
 use reth_provider::{StateProvider, StateProviderBox};
 use revm::{
     db::{states::bundle_state::BundleRetention, BundleState},
@@ -175,7 +172,7 @@ where
     }
 }
 
-impl<'a, DB> Drop for BlockStateDBRef<'a, DB>
+impl<DB> Drop for BlockStateDBRef<'_, DB>
 where
     DB: Database<Error = ProviderError>,
 {
@@ -184,7 +181,7 @@ where
     }
 }
 
-impl<'a, DB> AsRef<State<DB>> for BlockStateDBRef<'a, DB>
+impl<DB> AsRef<State<DB>> for BlockStateDBRef<'_, DB>
 where
     DB: Database<Error = ProviderError>,
 {
@@ -193,7 +190,7 @@ where
     }
 }
 
-impl<'a, DB> AsMut<State<DB>> for BlockStateDBRef<'a, DB>
+impl<DB> AsMut<State<DB>> for BlockStateDBRef<'_, DB>
 where
     DB: Database<Error = ProviderError>,
 {
@@ -439,7 +436,7 @@ impl<'a, 'b, Tracer: SimulationTracer> PartialBlockFork<'a, 'b, Tracer> {
             .checked_sub(U256::from(cumulative_gas_used + gas_reserved))
         {
             Some(gas_left) => {
-                if tx.gas_limit() > gas_left.to::<u64>() {
+                if tx.as_signed().gas_limit() > gas_left.to::<u64>() {
                     return Ok(Err(TransactionErr::GasLeft));
                 }
             }
@@ -509,6 +506,16 @@ impl<'a, 'b, Tracer: SimulationTracer> PartialBlockFork<'a, 'b, Tracer> {
             success: res.result.is_success(),
             cumulative_gas_used,
             logs: res.result.logs().to_vec(),
+            // Necessary because rbuilder is one crate that requires deps to have all-or-nothing
+            // features. This can be removed when logic required for op-rbuilder is
+            // moved into a dedicated crate.
+            #[cfg(feature = "optimism")]
+            deposit_nonce: None,
+            // Necessary because rbuilder is one crate that requires deps to have all-or-nothing
+            // features. This can be removed when logic required for op-rbuilder is
+            // moved into a dedicated crate.
+            #[cfg(feature = "optimism")]
+            deposit_receipt_version: None,
         };
 
         Ok(Ok(TransactionOk {
@@ -518,7 +525,7 @@ impl<'a, 'b, Tracer: SimulationTracer> PartialBlockFork<'a, 'b, Tracer> {
             cumulative_blob_gas_used,
             cumulative_gas_used,
             tx: tx_with_blobs.clone(),
-            nonce_updated: (tx.signer(), tx.nonce() + 1),
+            nonce_updated: (tx.signer(), tx.as_signed().nonce() + 1),
             receipt,
         }))
     }
@@ -1164,7 +1171,7 @@ impl<'a, 'b, Tracer: SimulationTracer> PartialBlockFork<'a, 'b, Tracer> {
     }
 }
 
-impl<'a, 'b> PartialBlockFork<'a, 'b, ()> {
+impl<'a> PartialBlockFork<'a, '_, ()> {
     pub fn new(state: &'a mut BlockState) -> Self {
         Self {
             rollbacks: 0,

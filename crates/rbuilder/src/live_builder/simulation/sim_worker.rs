@@ -4,15 +4,16 @@ use crate::{
         simulate_order, BlockState,
     },
     live_builder::simulation::CurrentSimulationContexts,
+    provider::StateProviderFactory,
     telemetry,
     telemetry::add_sim_thread_utilisation_timings,
 };
 use ahash::HashMap;
-use reth_payload_builder::database::SyncCachedReads as CachedReads;
-use reth_provider::StateProviderFactory;
+use parking_lot::Mutex;
+use reth::revm::cached::SyncCachedReads as CachedReads;
 use revm_primitives::ChainAddress;
 use std::{
-    sync::{Arc, Mutex},
+    sync::Arc,
     thread::sleep,
     time::{Duration, Instant},
 };
@@ -36,7 +37,7 @@ pub fn run_sim_worker<P>(
         }
         let current_sim_context = loop {
             let next_ctx = {
-                let ctxs = ctx.lock().unwrap();
+                let ctxs = ctx.lock();
                 ctxs.contexts.iter().next().map(|(_, c)| c.clone())
             };
             if let Some(ctx) = next_ctx {

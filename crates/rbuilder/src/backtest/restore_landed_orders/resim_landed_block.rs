@@ -3,10 +3,11 @@ use crate::{
         evm_inspector::SlotKey, tracers::AccumulatorSimulationTracer, BlockBuildingContext,
         BlockState, PartialBlock, PartialBlockFork,
     },
+    provider::StateProviderFactory,
     utils::{extract_onchain_block_txs, find_suggested_fee_recipient, signed_uint_delta},
 };
 use ahash::{HashMap, HashSet};
-use alloy_primitives::{B256, I256};
+use alloy_primitives::{TxHash, B256, I256};
 use eyre::Context;
 use reth_chainspec::ChainSpec;
 use reth_primitives::{Receipt, TransactionSignedEcRecovered, TxHash};
@@ -41,7 +42,9 @@ where
     let txs = extract_onchain_block_txs(&onchain_block)?;
 
     let suggested_fee_recipient = find_suggested_fee_recipient(&onchain_block, &txs);
-    let coinbase = ChainAddress(chain_spec.chain.id(), onchain_block.header.miner);
+
+    let coinbase = ChainAddress(chain_spec.chain.id(), onchain_block.header.beneficiary;
+    let parent_hash = onchain_block.header.parent_hash);
 
     let ctx = BlockBuildingContext::from_onchain_block(
         onchain_block,
@@ -51,6 +54,7 @@ where
         coinbase,
         suggested_fee_recipient,
         None,
+        Arc::from(provider.root_hasher(parent_hash)),
     );
 
     let state_provider =

@@ -1,18 +1,15 @@
 use crate::primitives::SimulatedOrder;
-use ahash::HashMap;
-use ahash::HashSet;
+use ahash::{HashMap, HashSet};
 use alloy_primitives::{utils::format_ether, U256};
 use crossbeam_queue::SegQueue;
 use itertools::Itertools;
 use std::time::Instant;
-use tracing::{trace, warn};
+use tracing::trace;
 
-use super::task::ConflictTask;
-use super::ConflictGroup;
-use super::ConflictResolutionResultPerGroup;
-use super::GroupId;
-use super::ResolutionResult;
-use super::{Algorithm, TaskPriority, TaskQueue};
+use super::{
+    task::ConflictTask, Algorithm, ConflictGroup, ConflictResolutionResultPerGroup, GroupId,
+    ResolutionResult, TaskPriority, TaskQueue,
+};
 use std::sync::mpsc as std_mpsc;
 
 const THRESHOLD_FOR_SIGNIFICANT_CHANGE: u64 = 20;
@@ -109,7 +106,7 @@ impl ConflictTaskGenerator {
             .cloned()
             .collect();
 
-        trace!("Removing subset groups: {:?}", subset_ids);
+        trace!(groups = ?subset_ids,"Removing subset groups");
         for id in subset_ids {
             self.existing_groups.remove(&id);
             self.cancel_tasks_for_group(id);
@@ -161,10 +158,12 @@ impl ConflictTaskGenerator {
             TaskPriority::High
         };
         trace!(
-            "Processing multi order group {group_id} with {} orders, {} profit with priority {:?}",
-            new_group.orders.len(),
-            format_ether(self.sum_top_n_profits(&new_group.orders, new_group.orders.len())),
-            priority.display()
+            group = group_id,
+            order_count = new_group.orders.len(),
+            profit =
+                format_ether(self.sum_top_n_profits(&new_group.orders, new_group.orders.len())),
+            priority = priority.display(),
+            "Processing multi order group"
         );
         if self.existing_groups.contains_key(&group_id) {
             self.update_tasks(group_id, new_group, priority);
@@ -184,15 +183,10 @@ impl ConflictTaskGenerator {
             total_profit: group.orders[0].sim_value.coinbase_profit,
             sequence_of_orders: vec![(0, group.orders[0].sim_value.coinbase_profit)],
         };
-        if let Err(e) = self
+        // We ignore the error since it means "receiver disconnected" and we expect the caller will detect the cancellation and stop calling us.
+        let _ = self
             .group_result_sender
-            .send((group_id, (sequence_of_orders, group.clone())))
-        {
-            warn!(
-                "Failed to send single order result for group {}: {:?}",
-                group_id, e
-            );
-        }
+            .send((group_id, (sequence_of_orders, group.clone())));
     }
 
     /// Determines if there are any changes between a new group and an existing group.
@@ -297,9 +291,9 @@ impl ConflictTaskGenerator {
         priority: TaskPriority,
     ) {
         trace!(
-            "Updating tasks for group {} with priority {:?}",
-            group_id,
-            priority.display()
+            group = group_id,
+            priority = priority.display(),
+            "Updating tasks",
         );
         // Cancel existing tasks for this grou
         self.cancel_tasks_for_group(group_id);
@@ -407,12 +401,10 @@ mod tests {
     use crate::primitives::{
         MempoolTx, Order, SimValue, SimulatedOrder, TransactionSignedEcRecoveredWithBlobs,
     };
-    use std::sync::Arc;
-
+    use alloy_consensus::TxLegacy;
     use alloy_primitives::{Address, TxHash, B256, U256};
-    use reth::primitives::{
-        Transaction, TransactionSigned, TransactionSignedEcRecovered, TxLegacy,
-    };
+    use reth::primitives::{Transaction, TransactionSigned, TransactionSignedEcRecovered};
+    use std::sync::Arc;
 
     use crate::building::evm_inspector::{SlotKey, UsedStateTrace};
     use std::sync::mpsc;
@@ -485,7 +477,6 @@ mod tests {
                 }),
                 used_state_trace: Some(trace),
                 sim_value,
-                prev_order: None,
             }
         }
     }
@@ -569,7 +560,7 @@ mod tests {
         let mut data_generator = DataGenerator::new();
 
         let mut group2_conflicts_with_group1 = HashSet::default();
-        group2_conflicts_with_group1.insert(1 as usize);
+        group2_conflicts_with_group1.insert(1_usize);
 
         let group1 = create_conflict_group(
             1,
@@ -602,7 +593,7 @@ mod tests {
         let mut data_generator = DataGenerator::new();
 
         let mut group2_conflicts_with_group1 = HashSet::default();
-        group2_conflicts_with_group1.insert(1 as usize);
+        group2_conflicts_with_group1.insert(1_usize);
 
         let groups = vec![
             create_conflict_group(

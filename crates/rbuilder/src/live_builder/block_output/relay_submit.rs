@@ -17,11 +17,11 @@ use crate::{
 use ahash::HashMap;
 use alloy_primitives::{utils::format_ether, U256};
 use mockall::automock;
+use parking_lot::Mutex;
 use reth_chainspec::ChainSpec;
 use reth_primitives::SealedBlock;
-use std::sync::{Arc, Mutex};
-use tokio::sync::Notify;
-use tokio::time::Instant;
+use std::sync::Arc;
+use tokio::{sync::Notify, time::Instant};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, event, info_span, trace, warn, Instrument, Level};
 
@@ -44,7 +44,7 @@ pub struct BestBlockCell {
 
 impl BestBlockCell {
     pub fn compare_and_update(&self, block: Block) {
-        let mut best_block = self.block.lock().unwrap();
+        let mut best_block = self.block.lock();
         let old_value = best_block
             .as_ref()
             .map(|b| b.trace.bid_value)
@@ -61,7 +61,7 @@ impl BestBlockCell {
     }
 
     pub fn take_best_block(&self) -> Option<Block> {
-        self.block.lock().unwrap().take()
+        self.block.lock().take()
     }
 
     pub async fn wait_for_change(&self) {
@@ -107,12 +107,21 @@ pub struct SubmissionConfig {
     pub dry_run: bool,
     pub validation_api: ValidationAPIClient,
 
-    pub optimistic_enabled: bool,
-    pub optimistic_signer: BLSBlockSigner,
-    pub optimistic_max_bid_value: U256,
-    pub optimistic_prevalidate_optimistic_blocks: bool,
-
+    pub optimistic_config: Option<OptimisticConfig>,
     pub bid_observer: Box<dyn BidObserver + Send + Sync>,
+}
+
+/// Configuration for optimistic block submission to relays.
+///
+/// For optimistic relays when bid_value < max_bid_value:
+/// - If prevalidate_optimistic_blocks=true: Validate first, then submit with optimistic key
+/// - If prevalidate_optimistic_blocks=false: Submit directly with optimistic key
+///   Otherwise uses normal submission path.
+#[derive(Debug, Clone)]
+pub struct OptimisticConfig {
+    pub signer: BLSBlockSigner,
+    pub max_bid_value: U256,
+    pub prevalidate_optimistic_blocks: bool,
 }
 
 /// Values from [`BuiltBlockTrace`]
@@ -198,8 +207,19 @@ async fn run_submit_to_relays_job(
             .iter()
             .filter(|o| !o.order.is_tx())
             .count();
-        let submission_optimistic =
-            config.optimistic_enabled && block.trace.bid_value < config.optimistic_max_bid_value;
+
+        // Only enable the optimistic config for this block if the bid value is below the max bid value
+        let optimistic_config = config
+            .optimistic_config
+            .as_ref()
+            .and_then(|optimistic_config| {
+                if block.trace.bid_value < optimistic_config.max_bid_value {
+                    Some(optimistic_config)
+                } else {
+                    None
+                }
+            });
+
         let best_bid_value = best_bid_sync_source.best_bid_value().unwrap_or_default();
         let submission_span = info_span!(
             "bid",
@@ -209,9 +229,9 @@ async fn run_submit_to_relays_job(
             block = block.sealed_block.number,
             hash = ?block.sealed_block.header.hash(),
             gas = block.sealed_block.gas_used,
-            txs = block.sealed_block.body.len(),
+            txs = block.sealed_block.body.transactions.len(),
             bundles,
-            buidler_name = block.builder_name,
+            builder_name = block.builder_name,
             fill_time_ms = block.trace.fill_time.as_millis(),
             finalize_time_ms = block.trace.finalize_time.as_millis(),
         );
@@ -219,15 +239,14 @@ async fn run_submit_to_relays_job(
             parent: &submission_span,
             "Submitting bid",
         );
-        inc_initiated_submissions(submission_optimistic);
-
-        //println!("[rb] submit block 2!");
+        inc_initiated_submissions(optimistic_config.is_some());
 
         let (normal_signed_submission, optimistic_signed_submission) = {
             let normal_signed_submission = match sign_block_for_relay(
                 &config.signer,
                 &block.sealed_block,
                 &block.txs_blobs_sidecars,
+                &block.execution_requests,
                 &config.chain_spec,
                 &slot_data.payload_attributes_event.data,
                 slot_data.slot_data.pubkey,
@@ -240,23 +259,28 @@ async fn run_submit_to_relays_job(
                     continue 'submit;
                 }
             };
-            //println!("[rb] normal_signed_submission ok");
-            let optimistic_signed_submission = match sign_block_for_relay(
-                &config.optimistic_signer,
-                &block.sealed_block,
-                &block.txs_blobs_sidecars,
-                &config.chain_spec,
-                &slot_data.payload_attributes_event.data,
-                slot_data.slot_data.pubkey,
-                block.trace.bid_value,
-            ) {
-                Ok(res) => res,
-                Err(err) => {
-                    error!(parent: &submission_span, err = ?err, "Error signing block for relay");
-                    continue 'submit;
+
+            let optimistic_signed_submission = if let Some(optimistic_config) = optimistic_config {
+                match sign_block_for_relay(
+                    &optimistic_config.signer,
+                    &block.sealed_block,
+                    &block.txs_blobs_sidecars,
+                    &block.execution_requests,
+                    &config.chain_spec,
+                    &slot_data.payload_attributes_event.data,
+                    slot_data.slot_data.pubkey,
+                    block.trace.bid_value,
+                ) {
+                    Ok(res) => Some((res, optimistic_config)),
+                    Err(err) => {
+                        error!(parent: &submission_span, err = ?err, "Error signing block for relay");
+                        continue 'submit;
+                    }
                 }
+            } else {
+                None
             };
-            //println!("[rb] optimistic_signed_submission ok");
+
             (normal_signed_submission, optimistic_signed_submission)
         };
 
@@ -294,11 +318,13 @@ async fn run_submit_to_relays_job(
             );
         }
 
-        if submission_optimistic {
-            let can_submit = if config.optimistic_prevalidate_optimistic_blocks {
+        if let Some((optimistic_signed_submission, optimistic_config)) =
+            &optimistic_signed_submission
+        {
+            let can_submit = if optimistic_config.prevalidate_optimistic_blocks {
                 validate_block(
                     &slot_data,
-                    &optimistic_signed_submission,
+                    optimistic_signed_submission,
                     block.sealed_block.clone(),
                     &config,
                     cancel.clone(),

@@ -7,6 +7,7 @@ use reth_payload_builder::database::SyncCachedReads as CachedReads;
 use reth_provider::{DatabaseProviderFactory, HeaderProvider, StateProviderFactory};
 use serde::de::DeserializeOwned;
 use std::fmt::Debug;
+use sysperf::{format_results, gather_system_info, run_all_benchmarks};
 use tokio::signal::ctrl_c;
 use tokio_util::sync::CancellationToken;
 
@@ -15,8 +16,9 @@ use crate::{
     live_builder::{
         base_config::load_config_toml_and_env, payload_events::MevBoostSlotDataGenerator,
     },
+    provider::StateProviderFactory,
     telemetry,
-    utils::build_info::Version,
+    utils::{bls::generate_random_bls_address, build_info::Version},
 };
 
 use super::{base_config::BaseConfig, config::RethInput, gwyneth::{EthApiStream, GwynethMempoolReciever}, LiveBuilder};
@@ -29,6 +31,13 @@ enum Cli {
     Config(RunCmd),
     #[clap(name = "version", about = "Print version information")]
     Version,
+    #[clap(
+        name = "sysperf",
+        about = "Run system performance benchmarks (CPU, disk, memory)"
+    )]
+    SysPerf,
+    #[clap(name = "gen-bls", about = "Generate a BLS signature")]
+    GenBls,
 }
 
 #[derive(Parser, Debug)]
@@ -46,26 +55,23 @@ pub trait LiveBuilderConfig: Debug + DeserializeOwned + Sync {
     /// Create a concrete builder
     ///
     /// Desugared from async to future to keep clippy happy
-    fn new_builder<P, DB>(
+    fn new_builder<P>(
         &self,
         reth_input: RethInput<P>,
         cancellation_token: CancellationToken,
-    ) -> impl std::future::Future<Output = eyre::Result<LiveBuilder<P, DB, MevBoostSlotDataGenerator>>>
-           + Send
+    ) -> impl std::future::Future<Output = eyre::Result<LiveBuilder<P, MevBoostSlotDataGenerator>>> + Send
     where
-        DB: Database + Clone + 'static,
-        P: DatabaseProviderFactory<DB> + StateProviderFactory + HeaderProvider + Clone + 'static;
+        P: StateProviderFactory + Clone + 'static;
 
     /// Patch until we have a unified way of backtesting using the exact algorithms we use on the LiveBuilder.
     /// building_algorithm_name will come from the specific configuration.
-    fn build_backtest_block<P, DB>(
+    fn build_backtest_block<P>(
         &self,
         building_algorithm_name: &str,
         input: BacktestSimulateBlockInput<'_, P>,
     ) -> eyre::Result<(Block, CachedReads)>
     where
-        DB: Database + Clone + 'static,
-        P: DatabaseProviderFactory<DB> + StateProviderFactory + Clone + 'static;
+        P: StateProviderFactory + Clone + 'static;
 }
 
 /// print_version_info func that will be called on command Cli::Version
@@ -84,6 +90,19 @@ where
         }
         Cli::Version => {
             print_version_info();
+            return Ok(());
+        }
+        Cli::SysPerf => {
+            let result =
+                run_all_benchmarks(&PathBuf::from("/tmp/benchmark_test.tmp"), 100, 100, 1000)?;
+
+            let sysinfo = gather_system_info();
+            println!("{}", format_results(&result, &sysinfo));
+            return Ok(());
+        }
+        Cli::GenBls => {
+            let address = generate_random_bls_address();
+            println!("0x{}", address);
             return Ok(());
         }
     };
