@@ -11,6 +11,7 @@ use futures::stream::TakeUntil;
 use futures::{FutureExt, Stream, StreamExt};
 use gwyneth::exex::{L1ParentState, L1ParentStates};
 use reth::network::NetworkInfo;
+use reth::rpc::api::eth::helpers::FullEthApi;
 use reth::rpc::eth::EthPubSub;
 use reth::transaction_pool::{EthPoolTransaction, EthPooledTransaction, NewTransactionEvent, TransactionPool};
 use reth_db::{Database, DatabaseEnv};

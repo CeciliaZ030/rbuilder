@@ -43,8 +43,8 @@ where
 
     let suggested_fee_recipient = find_suggested_fee_recipient(&onchain_block, &txs);
 
-    let coinbase = ChainAddress(chain_spec.chain.id(), onchain_block.header.beneficiary;
-    let parent_hash = onchain_block.header.parent_hash);
+    let coinbase = ChainAddress(chain_spec.chain.id(), onchain_block.header.beneficiary);
+    let parent_hash = onchain_block.header.parent_hash;
 
     let ctx = BlockBuildingContext::from_onchain_block(
         onchain_block,

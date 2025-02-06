@@ -1,11 +1,11 @@
 use gwyneth::{
-    cli::{create_gwyneth_nodes, GwynethArgs}, exex::{GwynethFullNode, L1ParentStates},
+    cli::{create_gwyneth_nodes, GwynethArgs}, exex::{GwynethFullNode, L1ParentStates}, GwynethAddOns,
 };
 use rbuilder::{
     live_builder::{base_config::load_config_toml_and_env, cli::LiveBuilderConfig, config::{Config, RethInput}, gwyneth::{EthApiStream, EthTxSender, GwynethMempoolReciever}},
     telemetry,
 };
-use reth::{network::NetworkEventListenerProvider, rpc::{api::{eth::helpers::EthTransactions, NetApiClient}, eth::EthApiServer, types::Header}, transaction_pool::TransactionPool};
+use reth::{chainspec::EthereumChainSpecParser, network::NetworkEventListenerProvider, rpc::{api::{eth::helpers::EthTransactions, NetApiClient}, eth::EthApiServer, types::Header}, transaction_pool::TransactionPool};
 use reth_db_api::Database;
 use reth_node_builder::{EngineNodeLauncher, NodeConfig};
 use reth_provider::{
@@ -28,101 +28,103 @@ fn main() -> eyre::Result<()> {
 
     reth_cli_util::sigsegv_handler::install();
 
-    if let Err(err) = Cli::<GwynethArgs>::parse().run(|builder, arg| async move {
-        println!("ignore-payload {:?}", builder.config().builder.ignore_payload);
+    if let Err(err) = Cli::<EthereumChainSpecParser, GwynethArgs>::parse()
+        .run(|builder, arg| async move {
+            println!("ignore-payload {:?}", builder.config().builder.ignore_payload);
 
-        let l1_node_config = builder.config().clone();
-        let task_executor = builder.task_executor().clone();
-        let gwyneth_nodes = create_gwyneth_nodes(&arg, task_executor.clone(), &l1_node_config).await;
-        let l1_parents = L1ParentStates::new(&gwyneth_nodes);
+            let l1_node_config = builder.config().clone();
+            let task_executor = builder.task_executor().clone();
+            let gwyneth_nodes = create_gwyneth_nodes(&arg, task_executor.clone(), &l1_node_config).await;
+            let l1_parents = L1ParentStates::new(&gwyneth_nodes);
 
-        let enable_engine2 = arg.experimental;
-        match enable_engine2 {
-            true => {
-                let (l2_providers, l2_ethapis) = gwyneth_nodes
-                    .iter()
-                    .map(|node| match node {
-                        GwynethFullNode::Provider1(_) => {
-                            panic!("Unexpected Provider: expect BlockchainProvider1")
-                        }
-                        GwynethFullNode::Provider2(n) => {
-                            let ethapi: Arc<dyn EthApiStream> = Arc::new(n.rpc_registry.eth_handlers().pubsub.clone());
-                            (n.provider.clone(), ethapi)
-                        },
-                    })
-                    .collect::<(Vec<_>, Vec<_>)>();
+            let enable_engine2 = arg.experimental;
+            match enable_engine2 {
+                true => {
+                    let (l2_providers, l2_ethapis) = gwyneth_nodes
+                        .iter()
+                        .map(|node| match node {
+                            GwynethFullNode::Provider1(_) => {
+                                panic!("Unexpected Provider: expect BlockchainProvider1")
+                            }
+                            GwynethFullNode::Provider2(n) => {
+                                let ethapi: Arc<dyn EthApiStream> = Arc::new(n.rpc_registry.eth_handlers().pubsub.clone());
+                                (n.provider.clone(), ethapi)
+                            },
+                        })
+                        .collect::<(Vec<_>, Vec<_>)>();
 
-                let l1_parents_ = l1_parents.clone();
-                let handle = builder
-                    .with_types_and_provider::<EthereumNode, BlockchainProvider2<_>>()
-                    .with_components(EthereumNode::components())
-                    .with_add_ons::<EthereumAddOns>()
-                    .on_rpc_started(move |ctx, handles| {
-                        // println!("[rb] Cecilia ==> on_rpc_started");
-                        let reth_input = RethInput {
-                            l1_provider: ctx.provider().clone(),
-                            l2_providers: l2_providers.clone(),
-                            l1_parents: l1_parents_.clone(),
-                            l1_ethapi: Some(Arc::new(ctx.registry.eth_handlers().pubsub.clone())),
-                            l2_ethapis: Some(l2_ethapis.clone()),
-                            l1_client: handles.rpc.http_client()
-                        };
-                        spawn_rbuilder(&arg, &l1_node_config, reth_input)
-                    })
-                    .install_exex("Rollup", move |ctx| async {
-                        let rollup = gwyneth::exex::Rollup::new(ctx, gwyneth_nodes, l1_parents).await?;
-                        Ok(rollup.start())
-                    })
-                    .launch_with_fn(|builder| {
-                        let launcher = EngineNodeLauncher::new(
-                            task_executor,
-                            builder.config().datadir(),
-                        );
-                        builder.launch_with(launcher)
-                    })
-                    .await?;
-                handle.node_exit_future.await
+                    let l1_parents_ = l1_parents.clone();
+                    let handle = builder
+                        .with_types_and_provider::<EthereumNode, BlockchainProvider2<_>>()
+                        .with_components(EthereumNode::components())
+                        .with_add_ons(EthereumAddOns::default())
+                        .on_rpc_started(move |ctx, handles| {
+                            // println!("[rb] Cecilia ==> on_rpc_started");
+                            let reth_input = RethInput {
+                                l1_provider: ctx.provider().clone(),
+                                l2_providers: l2_providers.clone(),
+                                l1_parents: l1_parents_.clone(),
+                                l1_ethapi: Some(Arc::new(ctx.registry.eth_handlers().pubsub.clone())),
+                                l2_ethapis: Some(l2_ethapis.clone()),
+                                l1_client: handles.rpc.http_client()
+                            };
+                            spawn_rbuilder(&arg, &l1_node_config, reth_input)
+                        })
+                        .install_exex("Rollup", move |ctx| async {
+                            let rollup = gwyneth::exex::Rollup::new(ctx, gwyneth_nodes, l1_parents).await?;
+                            Ok(rollup.start())
+                        })
+                        .launch_with_fn(|builder| {
+                            let launcher = EngineNodeLauncher::new(
+                                task_executor,
+                                builder.config().datadir(),
+                                Default::default()
+                            );
+                            builder.launch_with(launcher)
+                        })
+                        .await?;
+                    handle.node_exit_future.await
+                }
+                false => {
+                    let (l2_providers, l2_ethapis) = gwyneth_nodes
+                        .iter()
+                        .map(|node| match node {
+                            GwynethFullNode::Provider1(n) => {
+                                let ethapi: Arc<dyn EthApiStream> = Arc::new(n.rpc_registry.eth_handlers().pubsub.clone());
+                                (n.provider.clone(), ethapi)
+                            }
+                            GwynethFullNode::Provider2(_) => {
+                                panic!("Unexpected Provider: expect BlockchainProvider2")
+                            }
+                        })
+                        .collect::<(Vec<_>, Vec<_>)>();
+
+                    let l1_parents_ = l1_parents.clone();
+                    let handle = builder
+                        .with_types_and_provider::<EthereumNode, BlockchainProvider<_>>()
+                        .with_components(EthereumNode::components())
+                        .with_add_ons::<EthereumAddOns<_>>(Default::default())
+                        .on_rpc_started(move |ctx, handles| {
+                            let reth_input = RethInput {
+                                l1_provider: ctx.provider().clone(),
+                                l2_providers: l2_providers.clone(),
+                                l1_parents: l1_parents.clone(),
+                                l1_ethapi: Some(Arc::new(ctx.registry.eth_handlers().pubsub.clone())),
+                                l2_ethapis: Some(l2_ethapis.clone()),
+                                l1_client: handles.rpc.http_client()
+                            };
+                            spawn_rbuilder(&arg, &l1_node_config, reth_input)
+                        })
+                        .install_exex("Rollup", move |ctx| async {
+                            Ok(gwyneth::exex::Rollup::new(ctx, gwyneth_nodes, l1_parents_)
+                                .await?
+                                .start())
+                        })
+                        .launch()
+                        .await?;
+                    handle.node_exit_future.await
+                }
             }
-            false => {
-                let (l2_providers, l2_ethapis) = gwyneth_nodes
-                    .iter()
-                    .map(|node| match node {
-                        GwynethFullNode::Provider1(n) => {
-                            let ethapi: Arc<dyn EthApiStream> = Arc::new(n.rpc_registry.eth_handlers().pubsub.clone());
-                            (n.provider.clone(), ethapi)
-                        }
-                        GwynethFullNode::Provider2(_) => {
-                            panic!("Unexpected Provider: expect BlockchainProvider2")
-                        }
-                    })
-                    .collect::<(Vec<_>, Vec<_>)>();
-
-                let l1_parents_ = l1_parents.clone();
-                let handle = builder
-                    .with_types_and_provider::<EthereumNode, BlockchainProvider<_>>()
-                    .with_components(EthereumNode::components())
-                    .with_add_ons::<EthereumAddOns>()
-                    .install_exex("Rollup", move |ctx| async {
-                        Ok(gwyneth::exex::Rollup::new(ctx, gwyneth_nodes, l1_parents_)
-                            .await?
-                            .start())
-                    })
-                    .on_rpc_started(move |ctx, handles| {
-                        let reth_input = RethInput {
-                            l1_provider: ctx.provider().clone(),
-                            l2_providers: l2_providers.clone(),
-                            l1_parents: l1_parents.clone(),
-                            l1_ethapi: Some(Arc::new(ctx.registry.eth_handlers().pubsub.clone())),
-                            l2_ethapis: Some(l2_ethapis.clone()),
-                            l1_client: handles.rpc.http_client()
-                        };
-                        spawn_rbuilder(&arg, &l1_node_config, reth_input)
-                    })
-                    .launch()
-                    .await?;
-                handle.node_exit_future.await
-            }
-        }
     }) {
         eprintln!("[rb] Error: {err:?}");
         std::process::exit(1);
